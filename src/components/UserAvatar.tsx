@@ -28,7 +28,6 @@ const SIZE_CLASSES = {
  * Здесь fallback если avatar_color пустой.
  */
 const FALLBACK_PALETTE = [
-  '#000000', // чёрный
   '#ec4899', // розовый
   '#3b82f6', // синий
   '#8b5cf6', // фиолетовый
@@ -50,9 +49,8 @@ export function UserAvatar({ user, size = 'sm', showLink = false, variant = 'fil
     backgroundColor: bg,
   };
   const minimalStyles = {
-    color: bg,
-    backgroundColor: 'transparent',
-    boxShadow: `inset 0 0 0 2px ${bg}33`,
+    color: '#ffffff',
+    backgroundColor: bg,
   };
 
   const avatar = (

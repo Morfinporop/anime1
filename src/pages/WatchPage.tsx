@@ -80,7 +80,7 @@ export default function WatchPage() {
 
         <div className="mt-3 sm:mt-5 px-1 sm:px-0">
           <h1 className="text-display text-xl xs:text-2xl sm:text-3xl text-zinc-900">
-            {animeTitle} — Серия {episode.episode_number}
+            {animeTitle} {episode.season_id ? `— Серия ${episode.episode_number}` : ''}
           </h1>
           {episode.title && <p className="mt-1 text-sm text-zinc-600">{episode.title}</p>}
           <div className="mt-2 sm:mt-3 flex items-center gap-3 sm:gap-4 text-xs text-zinc-500">

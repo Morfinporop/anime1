@@ -4,6 +4,7 @@ import { api } from '../api';
 import { useAuth } from '../auth';
 import type { Anime, Comment, Episode, Season } from '../types';
 import { bannerUrl, FALLBACK_BANNER } from '../hooks';
+import { VideoPlayer } from '../components/VideoPlayer';
 import {
   ArrowLeftIcon, HeartIcon, PlayIcon, ShareIcon, StarIcon,
   ThumbsDownIcon, ThumbsUpIcon, SendIcon,
@@ -39,6 +40,7 @@ export default function AnimePage() {
   const [copied, setCopied] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [authorName, setAuthorName] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -55,6 +57,11 @@ export default function AnimePage() {
       setRating(r);
       setComments(cmts);
       if (a && ss.length > 0) setCurrentSeason(ss[0]);
+      if (a?.created_by) {
+        api.getUser(a.created_by).then(u => {
+          if (u) setAuthorName(u.username);
+        }).catch(() => {});
+      }
       if (user) api.isFavorite(animeId).then(setFav).catch(() => {});
       setLoading(false);
       window.scrollTo({ top: 0 });
@@ -189,7 +196,7 @@ export default function AnimePage() {
               {anime.created_by && (
                 <Link to={`/user/${anime.created_by}`} className="text-[11px] sm:text-xs text-zinc-500 hover:text-zinc-900 ml-auto">
                   <span className="hidden sm:inline">Автор: </span>
-                  <span className="font-semibold hover:underline">user #{anime.created_by}</span>
+                  <span className="font-semibold hover:underline">{authorName || `user #${anime.created_by}`}</span>
                 </Link>
               )}
             </div>
@@ -210,6 +217,13 @@ export default function AnimePage() {
                 Сезон {s.season_number}
               </button>
             ))}
+          </div>
+        )}
+
+        {/* Для одиночного аниме — показываем видеоплеер сразу */}
+        {anime.type === 'single' && episodes.length > 0 && (
+          <div className="bg-white rounded-xl sm:rounded-2xl border border-zinc-200 overflow-hidden p-4 sm:p-6">
+            <VideoPlayer episode={episodes[0]} />
           </div>
         )}
 

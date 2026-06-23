@@ -121,7 +121,7 @@ export function Header() {
                     )}
                     {user.is_admin && (
                       <Link to="/admin" onClick={() => setProfileOpen(false)} className="flex items-center gap-2.5 px-4 py-3 hover:bg-zinc-50 text-sm border-t border-zinc-100">
-                        <UploadIcon className="w-4 h-4 text-zinc-500" /> Панель администратора
+                        <UploadIcon className="w-4 h-4 text-zinc-500" /> Админ меню
                       </Link>
                     )}
                     <button onClick={() => { logout(); setProfileOpen(false); navigate('/'); }}

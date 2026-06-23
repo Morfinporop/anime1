@@ -35,7 +35,7 @@ export default function VideoCard({ anime }: Props) {
 
   return (
     <Link to={`/anime/${anime.id}`} className="group block">
-      <div className="relative aspect-[16/10] overflow-hidden rounded-lg sm:rounded-xl bg-zinc-100">
+      <div className="relative aspect-[3/4] overflow-hidden rounded-lg sm:rounded-xl bg-zinc-100">
         <img
           src={src}
           alt={anime.title}

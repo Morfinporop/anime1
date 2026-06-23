@@ -30,14 +30,11 @@ async function getFFmpeg(): Promise<any> {
 
   loadingPromise = (async () => {
     // Динамические импорты — не бандлятся
-    const [{ FFmpeg }, { toBlobURL }] = await Promise.all([
-      import('@ffmpeg/ffmpeg'),
-      import('@ffmpeg/util'),
-    ]);
+    const FFmpeg = (await import('@ffmpeg/ffmpeg')).FFmpeg;
     const ff = new FFmpeg();
     await ff.load({
-      coreURL: await toBlobURL(`${CORE_URL}/ffmpeg-core.js`, 'text/javascript'),
-      wasmURL: await toBlobURL(`${CORE_URL}/ffmpeg-core.wasm`, 'application/wasm'),
+      coreURL: `${CORE_URL}/ffmpeg-core.js`,
+      wasmURL: `${CORE_URL}/ffmpeg-core.wasm`,
     });
     ffmpegInstance = ff;
     return ff;
@@ -52,11 +49,16 @@ export interface CompressionOptions {
   qualities?: string[];
 }
 
+// Локальная реализация fetchFile - конвертирует File/Blob в Uint8Array
+async function fetchFile(file: File | Blob): Promise<Uint8Array> {
+  const arrayBuffer = await file.arrayBuffer();
+  return new Uint8Array(arrayBuffer);
+}
+
 export async function compressVideo(file: File, opts: CompressionOptions = {}): Promise<CompressionResult> {
   const { maxSizeMB = 500, onProgress, qualities = Object.keys(QUALITY_PRESETS) } = opts;
   const originalSize = file.size;
 
-  const { fetchFile } = await import('@ffmpeg/util');
   const ff = await getFFmpeg();
 
   const inputName = 'input' + getExt(file.name);

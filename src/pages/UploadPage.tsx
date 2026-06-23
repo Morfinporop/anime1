@@ -99,6 +99,27 @@ export default function UploadPage() {
     setCompressionProgress(0);
   };
 
+  const resetForm = () => {
+    setStep('anime');
+    setUploadType('season');
+    setMode('new');
+    setTitle('');
+    setDescription('');
+    setYear(new Date().getFullYear());
+    setAgeRating('12+');
+    setGenres([]);
+    setBannerFile(null);
+    setBannerPreview('');
+    setSeasonNumber(1);
+    setEpisodeNumber(1);
+    setCurrentSeasonId(null);
+    setEpisodeTitle('');
+    setVideoFile(null);
+    setAudioTracks([]);
+    setCompressionResult(null);
+    setCompressionProgress(0);
+  };
+
   const handleAudio = (file: File | undefined) => {
     if (!file) return;
     if (!file.type.startsWith('audio/')) { notify.error('Озвучка должна быть аудиофайлом'); return; }
@@ -252,17 +273,19 @@ export default function UploadPage() {
       </div>
 
       {/* Прогресс шагов */}
-      <div className="mb-5 flex items-center justify-center gap-2 text-xs">
-        <div className={`flex items-center gap-2 ${step === 'anime' ? 'text-zinc-900 font-semibold' : 'text-emerald-600'}`}>
-          <span className={`flex h-7 w-7 items-center justify-center rounded-full ${step === 'anime' ? 'bg-zinc-900 text-white' : 'bg-emerald-500 text-white'} font-bold`}>1</span>
-          Аниме
+      {uploadType === 'season' && (
+        <div className="mb-5 flex items-center justify-center gap-2 text-xs">
+          <div className={`flex items-center gap-2 ${step === 'anime' ? 'text-zinc-900 font-semibold' : 'text-emerald-600'}`}>
+            <span className={`flex h-7 w-7 items-center justify-center rounded-full ${step === 'anime' ? 'bg-zinc-900 text-white' : 'bg-emerald-500 text-white'} font-bold`}>1</span>
+            Аниме
+          </div>
+          <ChevronDownIcon className="h-3 w-3 text-zinc-300 -rotate-90" />
+          <div className={`flex items-center gap-2 ${step === 'episode' ? 'text-zinc-900 font-semibold' : 'text-zinc-400'}`}>
+            <span className={`flex h-7 w-7 items-center justify-center rounded-full ${step === 'episode' ? 'bg-zinc-900 text-white' : 'bg-zinc-200 text-zinc-500'} font-bold`}>2</span>
+            Серия
+          </div>
         </div>
-        <ChevronDownIcon className="h-3 w-3 text-zinc-300 -rotate-90" />
-        <div className={`flex items-center gap-2 ${step === 'episode' ? 'text-zinc-900 font-semibold' : 'text-zinc-400'}`}>
-          <span className={`flex h-7 w-7 items-center justify-center rounded-full ${step === 'episode' ? 'bg-zinc-900 text-white' : 'bg-zinc-200 text-zinc-500'} font-bold`}>2</span>
-          Серия
-        </div>
-      </div>
+      )}
 
       {step === 'anime' && (
         <div className="rounded-xl sm:rounded-2xl border border-zinc-200 bg-white p-4 sm:p-6 space-y-4 sm:space-y-5">
@@ -386,7 +409,7 @@ export default function UploadPage() {
 
       {step === 'episode' && (
         <div className="rounded-xl sm:rounded-2xl border border-zinc-200 bg-white p-4 sm:p-6 space-y-4 sm:space-y-5">
-          <h2 className="text-lg font-bold text-zinc-900">Шаг 2</h2>
+          <h2 className="text-lg font-bold text-zinc-900">{uploadType === 'single' ? 'Загрузка видео' : 'Шаг 2'}</h2>
 
           {uploadType === 'season' && (
             <div className="grid grid-cols-2 gap-3">
@@ -407,7 +430,7 @@ export default function UploadPage() {
             <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Название серии</label>
             <input type="text" value={episodeTitle} onChange={(e) => setEpisodeTitle(e.target.value)}
               className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:border-zinc-400 focus:outline-none text-sm"
-              placeholder="Например: Пробуждение" />
+              placeholder={uploadType === 'single' ? "Например: Полный метр" : "Например: Пробуждение"} />
           </div>
 
           <div>
@@ -499,7 +522,7 @@ export default function UploadPage() {
           </div>
 
           <div className="flex gap-2">
-            <button onClick={() => setStep('anime')} className="px-5 py-2.5 rounded-xl border border-zinc-200 bg-white text-sm font-medium text-zinc-700 hover:bg-zinc-50">
+            <button onClick={resetForm} className="px-5 py-2.5 rounded-xl border border-zinc-200 bg-white text-sm font-medium text-zinc-700 hover:bg-zinc-50">
               Назад
             </button>
             <button onClick={submitEpisode} disabled={busy || !compressionResult}
