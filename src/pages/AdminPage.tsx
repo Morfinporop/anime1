@@ -39,7 +39,7 @@ export default function AdminPage() {
 
   if (loading) return null;
   if (!user) return <Navigate to="/auth" replace />;
-  if (!user.is_admin) {
+  if (!user.is_admin && !user.isAdmin) {
     return (
       <div className="mx-auto max-w-md px-5 py-20 text-center sm:py-28">
         <ShieldIcon className="mx-auto mb-3 h-10 w-10 text-zinc-300" />
@@ -48,20 +48,23 @@ export default function AdminPage() {
     );
   }
 
-  const toggleAdmin = async (id: number, isAdmin: boolean) => {
+  const isAdmin = (u: User) => u.is_admin || u.isAdmin;
+  const canUpload = (u: User) => u.can_upload || u.canUpload;
+
+  const toggleAdmin = async (id: number, isCurrentlyAdmin: boolean) => {
     try {
-      await api.adminUpdateRole(id, { is_admin: !isAdmin });
-      notify.success(isAdmin ? 'Права админа сняты' : 'Выданы права администратора');
+      await api.adminUpdateRole(id, { is_admin: !isCurrentlyAdmin });
+      notify.success(isCurrentlyAdmin ? 'Права админа сняты' : 'Выданы права администратора');
       load(search);
     } catch (err: any) {
       notify.error(err.message ?? 'Ошибка');
     }
   };
 
-  const toggleUpload = async (id: number, canUpload: boolean) => {
+  const toggleUpload = async (id: number, canUploadNow: boolean) => {
     try {
-      await api.adminUpdateRole(id, { can_upload: !canUpload });
-      notify.success(canUpload ? 'Права на загрузку сняты' : 'Права на загрузку выданы');
+      await api.adminUpdateRole(id, { can_upload: !canUploadNow });
+      notify.success(canUploadNow ? 'Права на загрузку сняты' : 'Права на загрузку выданы');
       load(search);
     } catch (err: any) {
       notify.error(err.message ?? 'Ошибка');
@@ -155,12 +158,12 @@ export default function AdminPage() {
                 <Link to={`/user/${u.id}`} className="flex-1 min-w-0">
                   <div className="font-semibold text-xs sm:text-sm text-zinc-900 flex items-center gap-1.5 sm:gap-2 flex-wrap">
                     {u.username}
-                    {u.is_admin && (
+                    {isAdmin(u) && (
                       <span className="text-[9px] sm:text-[10px] px-1 sm:px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-800 font-semibold uppercase inline-flex items-center gap-1">
                         <ShieldIcon className="w-2.5 h-2.5" /> Admin
                       </span>
                     )}
-                    {u.can_upload && !u.is_admin && (
+                    {canUpload(u) && !isAdmin(u) && (
                       <span className="text-[9px] sm:text-[10px] px-1 sm:px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-semibold uppercase">Автор</span>
                     )}
                   </div>
@@ -170,24 +173,24 @@ export default function AdminPage() {
                   {u.id !== user.id && (
                     <>
                       <button
-                        onClick={() => toggleUpload(u.id, u.can_upload)}
+                        onClick={() => toggleUpload(u.id, canUpload(u))}
                         className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-[10px] sm:text-xs font-semibold transition ${
-                          u.can_upload ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
+                          canUpload(u) ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
                         }`}
                       >
-                        {u.can_upload ? (
+                        {canUpload(u) ? (
                           <span className="inline-flex items-center gap-1"><CheckIcon className="w-3 h-3" /> Автор</span>
                         ) : (
                           '+ Загрузка'
                         )}
                       </button>
                       <button
-                        onClick={() => toggleAdmin(u.id, u.is_admin)}
+                        onClick={() => toggleAdmin(u.id, isAdmin(u))}
                         className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-[10px] sm:text-xs font-semibold transition ${
-                          u.is_admin ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200' : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
+                          isAdmin(u) ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200' : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
                         }`}
                       >
-                        {u.is_admin ? (
+                        {isAdmin(u) ? (
                           <span className="inline-flex items-center gap-1"><CheckIcon className="w-3 h-3" /> Admin</span>
                         ) : (
                           '+ Админ'

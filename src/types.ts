@@ -2,8 +2,10 @@ export interface User {
   id: number;
   username: string;
   avatar_color: string;
-  is_admin: boolean;
-  can_upload: boolean;
+  is_admin?: boolean;
+  can_upload?: boolean;
+  isAdmin?: boolean;
+  canUpload?: boolean;
   created_at: string;
 }
 

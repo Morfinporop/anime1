@@ -73,7 +73,7 @@ export default function UploadPage() {
 
   if (loading) return null;
   if (!user) return <Navigate to="/auth" replace />;
-  if (!user.is_admin && !user.can_upload) {
+  if (!user.is_admin && !user.isAdmin && !user.can_upload && !user.canUpload) {
     return (
       <div className="mx-auto max-w-md px-5 py-20 text-center sm:py-28">
         <h1 className="text-display text-2xl text-zinc-900">Нет прав на загрузку</h1>

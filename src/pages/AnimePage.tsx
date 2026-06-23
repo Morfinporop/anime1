@@ -305,7 +305,7 @@ export default function AnimePage() {
                     <Link to={`/user/${c.user_id}`} className="font-semibold text-xs sm:text-sm text-zinc-900 hover:underline">
                       {c.username}
                     </Link>
-                    {c.is_admin && <span className="text-[9px] sm:text-[10px] px-1 sm:px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-800 font-semibold uppercase">Admin</span>}
+                    {(c.is_admin || c.isAdmin) && <span className="text-[9px] sm:text-[10px] px-1 sm:px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-800 font-semibold uppercase">Admin</span>}
                     <span className="text-xs text-zinc-400">{timeAgo(c.created_at)}</span>
                   </div>
                   <p className="mt-0.5 text-xs sm:text-sm text-zinc-700 break-words whitespace-pre-wrap">{c.text}</p>

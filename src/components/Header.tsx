@@ -47,7 +47,7 @@ export function Header() {
     setMobileMenuOpen(false);
   };
 
-  const canUpload = user && (user.is_admin || user.can_upload);
+  const canUpload = user && (user.is_admin || user.isAdmin || user.can_upload || user.canUpload);
 
   return (
     <>
@@ -203,7 +203,7 @@ export function Header() {
                   <UploadIcon className="w-4 h-4 text-zinc-500" /> Загрузить аниме
                 </Link>
               )}
-              {user?.is_admin && (
+              {user && (user.is_admin || user.isAdmin) && (
                 <Link to="/admin" onClick={() => setMobileMenuOpen(false)}
                   className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-100 text-sm text-zinc-900">
                   Панель администратора
