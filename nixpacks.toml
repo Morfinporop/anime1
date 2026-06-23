@@ -1,0 +1,12 @@
+# Принудительно используем Node.js 20 (Vite 7 требует 20.19+ или 22.12+)
+[phases.setup]
+nixPkgs = ["nodejs_20", "npm-9_x", "ffmpeg"]
+
+[phases.install]
+cmds = ["npm ci --legacy-peer-deps"]
+
+[phases.build]
+cmds = ["npm run build"]
+
+[start]
+cmd = "npm start"

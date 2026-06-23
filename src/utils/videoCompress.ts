@@ -1,12 +1,8 @@
 // Утилита сжатия видео через ffmpeg.wasm.
+// Загружается динамически с CDN на клиенте, не бандлится с Vite.
 // Сжимает видео до 500 МБ максимум без потери качества звука,
 // изображение подгоняется под выбранное разрешение.
-// Также генерирует несколько вариантов качества (144p-1080p).
-
-import { FFmpeg } from '@ffmpeg/ffmpeg';
-import { fetchFile, toBlobURL } from '@ffmpeg/util';
-
-const CORE_URL = 'https://unpkg.com/@ffmpeg/[email protected]/dist/esm';
+// Генерирует несколько вариантов качества (144p-1080p).
 
 export interface CompressionResult {
   qualities: Record<string, Blob>;
@@ -14,7 +10,6 @@ export interface CompressionResult {
   compressedSize: number;
 }
 
-// Маппинг качеств в CRF / битрейт / разрешение
 const QUALITY_PRESETS: Record<string, { crf: number; videoBitrate: string; scale: string; audioBitrate: string }> = {
   '144p':  { crf: 32, videoBitrate: '80k',   scale: '256:144',  audioBitrate: '64k'  },
   '240p':  { crf: 30, videoBitrate: '150k',  scale: '426:240',  audioBitrate: '64k'  },
@@ -24,14 +19,21 @@ const QUALITY_PRESETS: Record<string, { crf: number; videoBitrate: string; scale
   '1080p': { crf: 22, videoBitrate: '3000k', scale: '1920:1080', audioBitrate: '192k' },
 };
 
-let ffmpegInstance: FFmpeg | null = null;
-let loadingPromise: Promise<FFmpeg> | null = null;
+const CORE_URL = `https://unpkg.com/@ffmpeg/[email protected]/dist/esm`;
 
-async function getFFmpeg(): Promise<FFmpeg> {
+let ffmpegInstance: any = null;
+let loadingPromise: Promise<any> | null = null;
+
+async function getFFmpeg(): Promise<any> {
   if (ffmpegInstance) return ffmpegInstance;
   if (loadingPromise) return loadingPromise;
 
   loadingPromise = (async () => {
+    // Динамические импорты — не бандлятся
+    const [{ FFmpeg }, { toBlobURL }] = await Promise.all([
+      import('@ffmpeg/ffmpeg'),
+      import('@ffmpeg/util'),
+    ]);
     const ff = new FFmpeg();
     await ff.load({
       coreURL: await toBlobURL(`${CORE_URL}/ffmpeg-core.js`, 'text/javascript'),
@@ -45,11 +47,8 @@ async function getFFmpeg(): Promise<FFmpeg> {
 }
 
 export interface CompressionOptions {
-  /** Максимальный итоговый размер в МБ */
   maxSizeMB?: number;
-  /** Прогресс 0..1 */
   onProgress?: (ratio: number) => void;
-  /** Какие качества генерировать (по умолчанию все) */
   qualities?: string[];
 }
 
@@ -57,9 +56,9 @@ export async function compressVideo(file: File, opts: CompressionOptions = {}): 
   const { maxSizeMB = 500, onProgress, qualities = Object.keys(QUALITY_PRESETS) } = opts;
   const originalSize = file.size;
 
+  const { fetchFile } = await import('@ffmpeg/util');
   const ff = await getFFmpeg();
 
-  // Пишем исходник в виртуальную ФС
   const inputName = 'input' + getExt(file.name);
   await ff.writeFile(inputName, await fetchFile(file));
 
@@ -69,6 +68,7 @@ export async function compressVideo(file: File, opts: CompressionOptions = {}): 
   for (let i = 0; i < qualities.length; i++) {
     const q = qualities[i];
     const preset = QUALITY_PRESETS[q];
+    if (!preset) continue;
     const outputName = `out_${q}.mp4`;
 
     try {
@@ -86,12 +86,10 @@ export async function compressVideo(file: File, opts: CompressionOptions = {}): 
         outputName,
       ]);
       const data = await ff.readFile(outputName);
-      // Создаём новый Uint8Array backed by a fresh ArrayBuffer чтобы избежать SharedArrayBuffer проблем
       const buf = new Uint8Array(data as Uint8Array).slice().buffer;
       const blob = new Blob([buf], { type: 'video/mp4' });
       result[q] = blob;
       totalCompressed += blob.size;
-      // Удаляем промежуточный файл
       try { await ff.deleteFile(outputName); } catch {}
     } catch (err) {
       console.warn(`Не удалось создать качество ${q}:`, err);
@@ -100,10 +98,9 @@ export async function compressVideo(file: File, opts: CompressionOptions = {}): 
     onProgress?.((i + 1) / qualities.length);
   }
 
-  // Если общий размер превышает лимит, можно отбросить самые тяжёлые качества
+  // Если общий размер превышает лимит, отбрасываем самые тяжёлые качества
   const maxBytes = maxSizeMB * 1024 * 1024;
   while (totalCompressed > maxBytes && Object.keys(result).length > 1) {
-    // удаляем самое высокое качество
     const keys = Object.keys(result).sort((a, b) => {
       const order = ['1080p', '720p', '480p', '360p', '240p', '144p'];
       return order.indexOf(a) - order.indexOf(b);
@@ -113,7 +110,6 @@ export async function compressVideo(file: File, opts: CompressionOptions = {}): 
     delete result[toRemove];
   }
 
-  // Чистим входной файл
   try { await ff.deleteFile(inputName); } catch {}
 
   const compressedSize = Object.values(result).reduce((s, b) => s + b.size, 0);

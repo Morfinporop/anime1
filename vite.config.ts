@@ -23,4 +23,16 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    // @ffmpeg/ffmpeg использует Web Workers и SharedArrayBuffer,
+    // его нужно грузить динамически с CDN на клиенте, не бандлить.
+    rollupOptions: {
+      external: (id) => {
+        return id.startsWith("@ffmpeg/");
+      },
+    },
+  },
+  optimizeDeps: {
+    exclude: ["@ffmpeg/ffmpeg", "@ffmpeg/util"],
+  },
 });
