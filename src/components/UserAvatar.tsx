@@ -1,4 +1,4 @@
-// Круглый аватар пользователя
+// Круглый аватар пользователя с фоновой заливкой случайного цвета
 import { Link } from 'react-router-dom';
 import type { User } from '../types';
 
@@ -8,7 +8,7 @@ interface UserAvatarProps {
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
   /** Если true — оборачивает в ссылку на профиль */
   showLink?: boolean;
-  /** Вариант: 'filled' (с фоном) или 'minimal' (только буква, без фона) */
+  /** Режим: 'filled' — круг с фоном, 'minimal' — только буква с обводкой */
   variant?: 'filled' | 'minimal';
   className?: string;
 }
@@ -21,18 +21,38 @@ const SIZE_CLASSES = {
   xl: 'w-20 h-20 text-2xl',
 };
 
-export function UserAvatar({ user, size = 'sm', showLink = false, variant = 'minimal', className = '' }: UserAvatarProps) {
-  // Минималистичный — только буква с цветным фоном-буквы, без заливки
-  const minimalStyles = {
-    color: user.avatar_color,
-    backgroundColor: 'transparent',
-    boxShadow: `inset 0 0 0 2px ${user.avatar_color}22`,
-  };
+/**
+ * Палитра фонов для буквы. Выбирается случайно из набора
+ * (чёрный, розовый, синий) — но ОДИН цвет на пользователя,
+ * сохраняется в User.avatar_color из БД.
+ * Здесь fallback если avatar_color пустой.
+ */
+const FALLBACK_PALETTE = [
+  '#000000', // чёрный
+  '#ec4899', // розовый
+  '#3b82f6', // синий
+  '#8b5cf6', // фиолетовый
+  '#10b981', // изумрудный
+  '#f59e0b', // янтарный
+];
 
-  // Заполненный — круг с фоном
+function pickBg(color?: string): string {
+  if (color) return color;
+  // стабильный по id: используем хеш ника
+  const idx = Math.abs((color || '').split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % FALLBACK_PALETTE.length;
+  return FALLBACK_PALETTE[idx];
+}
+
+export function UserAvatar({ user, size = 'sm', showLink = false, variant = 'filled', className = '' }: UserAvatarProps) {
+  const bg = pickBg(user.avatar_color);
   const filledStyles = {
     color: '#fff',
-    backgroundColor: user.avatar_color,
+    backgroundColor: bg,
+  };
+  const minimalStyles = {
+    color: bg,
+    backgroundColor: 'transparent',
+    boxShadow: `inset 0 0 0 2px ${bg}33`,
   };
 
   const avatar = (
