@@ -1,0 +1,62 @@
+@import "tailwindcss";
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  background: #ffffff;
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif;
+  color: #18181b;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* { box-sizing: border-box; }
+
+button { cursor: pointer; font-family: inherit; }
+input, textarea, select { font-family: inherit; }
+
+.text-display {
+  font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+  letter-spacing: -0.04em;
+  font-weight: 800;
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: #a1a1aa; }
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in { animation: fade-in 0.4s ease-out both; }
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-slide-up { animation: slide-up 0.5s ease-out both; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+.animate-spin-slow { animation: spin 1s linear infinite; }
+
+/* Видеоплеер range */
+input[type="range"].yt-range {
+  -webkit-appearance: none; appearance: none; background: transparent; height: 3px; cursor: pointer;
+}
+input[type="range"].yt-range::-webkit-slider-runnable-track {
+  height: 3px; background: rgba(255,255,255,0.25); border-radius: 3px;
+}
+input[type="range"].yt-range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  height: 13px; width: 13px; background: #ff0033; border-radius: 50%;
+  margin-top: -5px;
+}
+input[type="range"].yt-range::-moz-range-track {
+  height: 3px; background: rgba(255,255,255,0.25); border-radius: 3px;
+}
+input[type="range"].yt-range::-moz-range-thumb {
+  height: 13px; width: 13px; background: #ff0033; border: none; border-radius: 50%;
+}
