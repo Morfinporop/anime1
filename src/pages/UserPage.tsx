@@ -50,7 +50,7 @@ export default function UserPage() {
     <div className="mx-auto max-w-[1400px] px-3 sm:px-4 md:px-6 py-4 sm:py-6 md:py-8 animate-fade-in">
       <div className="bg-white rounded-2xl sm:rounded-3xl border border-zinc-200 p-4 sm:p-6 md:p-8">
         <div className="flex items-start gap-3 sm:gap-5">
-          <UserAvatar user={user} size="xl" />
+          <UserAvatar user={user} size="xl" variant="minimal" />
           <div className="flex-1 min-w-0">
             <h1 className="text-display text-2xl sm:text-3xl md:text-4xl text-zinc-900 flex items-center gap-2 flex-wrap">
               {user.username}

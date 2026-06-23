@@ -99,33 +99,10 @@ if (fs.existsSync(distPath)) {
 }
 
 // ============ STARTUP ============
+// Админ НЕ создаётся автоматически — пользователь сам регистрируется,
+// а логика "если ник Morfin — админ" срабатывает при регистрации (см. /api/auth/register).
 async function ensureAdmin() {
-  if (!pool) return;
-  try {
-    // Делаем user #1 (или Morfin) админом
-    const r = await query(
-      `UPDATE users SET is_admin = TRUE, can_upload = TRUE
-       WHERE id = 1 OR LOWER(username) = 'morfin' RETURNING id, username`
-    );
-    if (r.rows.length > 0) {
-      console.log(`[init] ✓ Admin: ${r.rows[0].username} (id=${r.rows[0].id})`);
-      return;
-    }
-    // Если нет Morfin — создаём
-    const hash = await hashPassword(process.env.ADMIN_PASSWORD || 'morfin2024');
-    const ins = await query(
-      `INSERT INTO users (username, password_hash, avatar_color, is_admin, can_upload)
-       VALUES ($1, $2, $3, TRUE, TRUE)
-       ON CONFLICT (username) DO UPDATE SET is_admin = TRUE, can_upload = TRUE, password_hash = $2
-       RETURNING id, username`,
-      ['Morfin', hash, '#ff85b8']
-    );
-    if (ins.rows.length > 0) {
-      console.log(`[init] ✓ Создан админ Morfin (id=${ins.rows[0].id}, пароль: ${process.env.ADMIN_PASSWORD || 'morfin2024'})`);
-    }
-  } catch (err: any) {
-    console.warn('[init.warn] Admin bootstrap:', err.message);
-  }
+  // no-op
 }
 
 async function start() {

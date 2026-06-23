@@ -145,7 +145,7 @@ export function Header() {
                 <UploadIcon className="w-5 h-5 text-zinc-700" />
               </Link>
             )}
-            {user && <UserAvatar user={user} size="sm" showLink />}
+            {user && <UserAvatar user={user} size="sm" variant="filled" showLink />}
             <button
               onClick={() => setMobileMenuOpen(true)}
               className="p-2 rounded-full hover:bg-zinc-100 transition"
