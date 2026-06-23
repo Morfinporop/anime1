@@ -5,6 +5,7 @@ import { api } from '../api';
 import type { Anime } from '../types';
 import { SearchIcon, UserIcon, UploadIcon, LogoutIcon, MenuIcon, CloseIcon } from './icons';
 import { bannerUrl, FALLBACK_BANNER } from '../hooks';
+import { UserAvatar } from './UserAvatar';
 
 export function Header() {
   const { user, logout } = useAuth();
@@ -31,18 +32,11 @@ export function Header() {
     return () => document.removeEventListener('mousedown', onClick);
   }, []);
 
-  // Закрываем мобильное меню при изменении маршрута
-  useEffect(() => {
-    setMobileMenuOpen(false);
-  }, [navigate]);
+  useEffect(() => { setMobileMenuOpen(false); }, [navigate]);
 
-  // Блокируем скролл когда открыто мобильное меню
   useEffect(() => {
-    if (mobileMenuOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
+    if (mobileMenuOpen) document.body.style.overflow = 'hidden';
+    else document.body.style.overflow = '';
     return () => { document.body.style.overflow = ''; };
   }, [mobileMenuOpen]);
 
@@ -59,14 +53,12 @@ export function Header() {
     <>
       <header className="sticky top-0 z-40 bg-white/85 backdrop-blur-xl border-b border-zinc-200">
         <div className="max-w-[1400px] mx-auto px-3 sm:px-6 h-14 flex items-center gap-2 sm:gap-4">
-          {/* Логотип */}
           <Link to="/" className="flex items-center gap-2 shrink-0">
             <img src="/images/logov.png" alt="AnimeWorld" className="w-8 h-8 rounded-lg shadow-sm"
               onError={(e) => { (e.target as HTMLImageElement).src = FALLBACK_BANNER; }} />
             <span className="font-bold text-base text-zinc-900 hidden sm:block">AnimeWorld</span>
           </Link>
 
-          {/* Поиск — на мобильных сужается */}
           <div ref={searchRef} className="flex-1 min-w-0 max-w-2xl mx-auto">
             <form onSubmit={goSearch} className="relative">
               <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
@@ -96,7 +88,7 @@ export function Header() {
             )}
           </div>
 
-          {/* Правая часть — на десктопе */}
+          {/* Десктоп */}
           <div className="hidden md:flex items-center gap-2 shrink-0">
             {canUpload && (
               <Link to="/upload" className="flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-black text-white text-sm font-medium hover:bg-zinc-800 transition">
@@ -107,21 +99,26 @@ export function Header() {
               <div ref={profileRef} className="relative">
                 <button onClick={() => setProfileOpen(v => !v)}
                   className="flex items-center gap-2 pl-1 pr-3 py-1 rounded-full hover:bg-zinc-100 transition">
-                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-white font-bold text-xs"
-                    style={{ backgroundColor: user.avatar_color }}>
-                    {user.username[0]?.toUpperCase()}
-                  </div>
+                  <UserAvatar user={user} size="sm" />
                   <span className="text-sm font-medium">{user.username}</span>
                 </button>
                 {profileOpen && (
                   <div className="absolute right-0 top-full mt-2 w-60 bg-white rounded-2xl shadow-2xl border border-zinc-200 overflow-hidden z-50">
-                    <div className="p-4 border-b border-zinc-100">
-                      <div className="font-semibold text-sm text-zinc-900 truncate">{user.username}</div>
-                      <div className="text-xs text-zinc-500 mt-0.5">ID #{user.id} · {user.is_admin ? 'Администратор' : 'Пользователь'}</div>
+                    <div className="p-4 border-b border-zinc-100 flex items-center gap-3">
+                      <UserAvatar user={user} size="md" />
+                      <div className="min-w-0">
+                        <div className="font-semibold text-sm text-zinc-900 truncate">{user.username}</div>
+                        <div className="text-xs text-zinc-500">ID #{user.id}</div>
+                      </div>
                     </div>
                     <Link to={`/user/${user.id}`} onClick={() => setProfileOpen(false)} className="flex items-center gap-2.5 px-4 py-3 hover:bg-zinc-50 text-sm">
                       <UserIcon className="w-4 h-4 text-zinc-500" /> Мой профиль
                     </Link>
+                    {canUpload && (
+                      <Link to="/upload" onClick={() => setProfileOpen(false)} className="flex items-center gap-2.5 px-4 py-3 hover:bg-zinc-50 text-sm border-t border-zinc-100">
+                        <UploadIcon className="w-4 h-4 text-zinc-500" /> Загрузить аниме
+                      </Link>
+                    )}
                     {user.is_admin && (
                       <Link to="/admin" onClick={() => setProfileOpen(false)} className="flex items-center gap-2.5 px-4 py-3 hover:bg-zinc-50 text-sm border-t border-zinc-100">
                         <UploadIcon className="w-4 h-4 text-zinc-500" /> Панель администратора
@@ -141,19 +138,14 @@ export function Header() {
             )}
           </div>
 
-          {/* Правая часть — на мобильных (только иконки) */}
+          {/* Мобильный */}
           <div className="flex md:hidden items-center gap-1 shrink-0">
             {canUpload && (
               <Link to="/upload" className="p-2 rounded-full hover:bg-zinc-100 transition" aria-label="Загрузить">
                 <UploadIcon className="w-5 h-5 text-zinc-700" />
               </Link>
             )}
-            {user && (
-              <Link to={`/user/${user.id}`} className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xs"
-                style={{ backgroundColor: user.avatar_color }}>
-                {user.username[0]?.toUpperCase()}
-              </Link>
-            )}
+            {user && <UserAvatar user={user} size="sm" showLink />}
             <button
               onClick={() => setMobileMenuOpen(true)}
               className="p-2 rounded-full hover:bg-zinc-100 transition"
@@ -165,7 +157,7 @@ export function Header() {
         </div>
       </header>
 
-      {/* Мобильное меню (полноэкранное) */}
+      {/* Мобильное меню */}
       {mobileMenuOpen && (
         <div className="fixed inset-0 z-50 md:hidden bg-white animate-fade-in">
           <div className="flex items-center justify-between px-4 h-14 border-b border-zinc-200">
@@ -191,10 +183,7 @@ export function Header() {
             {user && (
               <Link to={`/user/${user.id}`} onClick={() => setMobileMenuOpen(false)}
                 className="flex items-center gap-3 px-4 py-3 rounded-xl bg-zinc-50 border border-zinc-200">
-                <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm"
-                  style={{ backgroundColor: user.avatar_color }}>
-                  {user.username[0]?.toUpperCase()}
-                </div>
+                <UserAvatar user={user} size="md" />
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-sm text-zinc-900 truncate">{user.username}</div>
                   <div className="text-xs text-zinc-500">ID #{user.id} · {user.is_admin ? 'Администратор' : 'Пользователь'}</div>
