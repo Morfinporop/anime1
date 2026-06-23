@@ -9,6 +9,7 @@ import UploadPage from './pages/UploadPage';
 import SearchPage from './pages/SearchPage';
 import SeasonPage from './pages/SeasonPage';
 import AdminPage from './pages/AdminPage';
+import UserPage from './pages/UserPage';
 import { DiscordIcon } from './components/icons';
 
 export default function App() {
@@ -24,32 +25,29 @@ export default function App() {
           <Route path="/watch/:id" element={<WatchPage />} />
           <Route path="/auth" element={<AuthPage />} />
           <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/user/:id" element={<UserPage />} />
           <Route path="/upload" element={<UploadPage />} />
           <Route path="/admin" element={<AdminPage />} />
           <Route path="/search" element={<SearchPage />} />
         </Routes>
       </main>
 
-      {/* Блок "Хотите стать автором своего аниме?" */}
-      <section className="mx-auto max-w-[1400px] px-5 sm:px-8 py-8">
-        <a
-          href="https://discord.gg/fZXn6vjUFb"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="group flex items-center justify-between gap-4 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 p-5 sm:p-6 text-white shadow-lg shadow-indigo-500/30 hover:shadow-xl hover:scale-[1.01] transition-all"
-        >
-          <div className="flex items-center gap-4">
-            <DiscordIcon className="w-10 h-10 sm:w-12 sm:h-12 shrink-0" />
-            <div>
-              <div className="text-display text-xl sm:text-2xl">Хотите стать автором своего аниме?</div>
-              <div className="text-sm text-indigo-100 mt-0.5">тебе к нам! — присоединяйтесь к нашему Discord</div>
+      <footer className="mx-auto max-w-[1400px] w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
+        <div className="flex flex-col xs:flex-row items-center justify-between gap-3">
+          <a
+            href="https://discord.gg/fZXn6vjUFb"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 sm:gap-2.5 rounded-full bg-indigo-600 hover:bg-indigo-700 transition pl-2 pr-3 sm:pr-4 py-1.5 sm:py-2 text-white shadow-md shadow-indigo-300/50 max-w-full"
+          >
+            <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-white/15 flex items-center justify-center shrink-0">
+              <DiscordIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </div>
-          </div>
-          <svg className="w-5 h-5 shrink-0 group-hover:translate-x-1 transition" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14m-7-7l7 7-7 7" />
-          </svg>
-        </a>
-      </section>
+            <span className="text-xs sm:text-sm font-semibold truncate">Хотите стать автором своего аниме? тебе к нам!</span>
+          </a>
+          <div className="text-[10px] sm:text-xs text-zinc-500">©{new Date().getFullYear()} AnimeWorld · все права защищены</div>
+        </div>
+      </footer>
     </div>
   );
 }

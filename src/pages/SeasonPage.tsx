@@ -1,135 +1,113 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import { store } from '../store';
-import type { Anime, SortType } from '../types';
-import VideoCard from '../components/VideoCard';
-import { FilterIcon, GridIcon, ListIcon, ArrowLeftIcon } from '../components/icons';
-
-type View = 'grid' | 'list';
+import { useEffect, useState } from 'react';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { api } from '../api';
+import type { Anime, Season } from '../types';
+import { bannerUrl, FALLBACK_BANNER } from '../hooks';
 
 export default function SeasonPage() {
   const { season } = useParams<{ season: string }>();
-  // Поддержка URL /season/1, /season/2 — для будущего расширения
-  void season;
+  const [params] = useSearchParams();
+  const animeIdParam = params.get('anime');
+  const seasonNum = parseInt(season ?? '1');
+  const animeId = animeIdParam ? parseInt(animeIdParam) : 0;
 
-  const [items, setItems] = useState<Anime[]>([]);
+  const [anime, setAnime] = useState<Anime | null>(null);
+  const [seasons, setSeasons] = useState<Season[]>([]);
+  const [episodes, setEpisodes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [genre, setGenre] = useState('all');
-  const [sort, setSort] = useState<SortType>('popular');
-  const [view, setView] = useState<View>('grid');
 
   useEffect(() => {
-    setLoading(true);
-    const all = store.listAnime(sort, genre).filter(a => a.type === 'season');
-    setItems(all);
-    setLoading(false);
-  }, [sort, genre]);
+    if (!animeId) { setLoading(false); return; }
+    Promise.all([api.getAnime(animeId), api.getSeasons(animeId)]).then(async ([a, ss]) => {
+      setAnime(a);
+      setSeasons(ss);
+      const targetSeason = ss.find(s => s.season_number === seasonNum) || ss[0];
+      if (targetSeason) {
+        const eps = await api.getSeasonEpisodes(targetSeason.id);
+        setEpisodes(eps);
+      }
+      setLoading(false);
+      window.scrollTo({ top: 0 });
+    });
+  }, [animeId, seasonNum]);
 
-  const allGenres = useMemo(() => {
-    const s = new Set<string>();
-    items.forEach(a => a.genres.forEach(g => s.add(g)));
-    return ['all', ...Array.from(s).sort()];
-  }, [items]);
+  if (loading) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <div className="h-8 w-8 animate-spin-slow rounded-full border-2 border-zinc-300 border-t-zinc-900" />
+      </div>
+    );
+  }
+
+  if (!anime) {
+    return (
+      <div className="mx-auto max-w-md px-5 py-20 text-center">
+        <h1 className="text-display text-2xl text-zinc-900">Аниме не найдено</h1>
+        <Link to="/" className="mt-4 inline-flex text-sm text-sakura-600 hover:underline">На главную</Link>
+      </div>
+    );
+  }
 
   return (
     <div className="animate-fade-in">
-      <section className="relative overflow-hidden bg-white">
-        <div className="relative mx-auto max-w-[1400px] px-5 pt-6 pb-6 sm:px-8 sm:pt-10 sm:pb-8">
-          <Link to="/" className="inline-flex items-center gap-1.5 text-sm font-medium text-zinc-700 hover:text-zinc-900 transition-colors">
-            <ArrowLeftIcon className="h-4 w-4" /> На главную
-          </Link>
-          <div className="mt-5 max-w-4xl animate-slide-up">
-            <h1 className="text-display text-5xl text-zinc-900 sm:text-7xl lg:text-[6rem]">Аниме</h1>
-            <p className="mt-2 max-w-xl text-sm text-zinc-500 sm:text-base">
-              Японская анимация в высоком качестве с разными озвучками и продвинутым плеером.
-            </p>
+      <section className="relative">
+        <div className="relative h-48 sm:h-64">
+          <img src={bannerUrl(anime.id)} alt="" className="absolute inset-0 w-full h-full object-cover"
+            onError={(e) => { (e.target as HTMLImageElement).src = FALLBACK_BANNER; }} />
+          <div className="absolute inset-0 bg-gradient-to-t from-white via-white/60 to-transparent" />
+        </div>
+        <div className="mx-auto max-w-[1400px] px-4 sm:px-6 lg:px-8 -mt-20 sm:-mt-32 relative">
+          <div className="bg-white rounded-2xl sm:rounded-3xl shadow-xl p-4 sm:p-6 md:p-8 border border-zinc-200">
+            <Link to={`/anime/${anime.id}`} className="text-xs sm:text-sm text-zinc-500 hover:text-zinc-900 inline-block mb-1">
+              ← {anime.title}
+            </Link>
+            <h1 className="text-display text-2xl sm:text-3xl md:text-5xl">Сезон {seasonNum}</h1>
+            <p className="mt-2 text-xs sm:text-sm text-zinc-500">{episodes.length} серий</p>
           </div>
         </div>
       </section>
 
-      <div className="sticky top-14 z-30 border-b border-zinc-200 bg-white/85 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-[1400px] flex-wrap items-center gap-2 px-5 py-3 sm:px-8">
-          <FilterIcon className="h-4 w-4 text-zinc-400" />
-          <select value={genre} onChange={(e) => setGenre(e.target.value)} className="rounded-full border border-zinc-200 bg-white px-3.5 py-1.5 text-xs font-medium text-zinc-700 outline-none hover:bg-zinc-50 cursor-pointer">
-            {allGenres.map(g => <option key={g} value={g}>{g === 'all' ? 'Все жанры' : g}</option>)}
-          </select>
-          <select value={sort} onChange={(e) => setSort(e.target.value as SortType)} className="rounded-full border border-zinc-200 bg-white px-3.5 py-1.5 text-xs font-medium text-zinc-700 outline-none hover:bg-zinc-50 cursor-pointer">
-            <option value="popular">По популярности</option>
-            <option value="newest">Сначала новые</option>
-            <option value="rating">По рейтингу</option>
-            <option value="title">По алфавиту</option>
-          </select>
-          <div className="flex-1" />
-          <span className="text-xs text-zinc-500">{items.length} {pluralize(items.length, ['тайтл', 'тайтла', 'тайтлов'])}</span>
-          <div className="flex gap-1 rounded-full border border-zinc-200 bg-white p-1">
-            <button onClick={() => setView('grid')} className={`flex h-7 w-7 items-center justify-center rounded-full transition ${view === 'grid' ? 'bg-zinc-900 text-white' : 'text-zinc-500 hover:bg-zinc-50'}`} aria-label="Сетка">
-              <GridIcon className="h-3.5 w-3.5" />
-            </button>
-            <button onClick={() => setView('list')} className={`flex h-7 w-7 items-center justify-center rounded-full transition ${view === 'list' ? 'bg-zinc-900 text-white' : 'text-zinc-500 hover:bg-zinc-50'}`} aria-label="Список">
-              <ListIcon className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div className="mx-auto max-w-[1400px] px-5 py-6 sm:px-8 sm:py-8">
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-20">
-            <div className="h-8 w-8 animate-spin-slow rounded-full border-2 border-zinc-300 border-t-zinc-900" />
-            <p className="mt-3 text-sm text-zinc-500">Загрузка каталога...</p>
-          </div>
-        ) : items.length === 0 ? (
-          <div className="rounded-3xl border border-dashed border-zinc-200 py-16 text-center">
-            <h3 className="text-xl font-bold text-zinc-900">Пока ничего нет</h3>
-            <p className="mt-2 text-sm text-zinc-500">Загрузите первое аниме — оно появится здесь для всех.</p>
-            <Link to="/upload" className="mt-5 inline-flex items-center gap-1.5 rounded-full bg-zinc-900 px-5 py-2.5 text-sm font-medium text-white transition-all hover:scale-105">
-              Загрузить аниме
-            </Link>
-          </div>
-        ) : view === 'grid' ? (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-            {items.map((v, i) => (
-              <div key={v.id} className="animate-fade-in" style={{ animationDelay: `${Math.min(i * 15, 150)}ms` }}>
-                <VideoCard anime={v} />
-              </div>
+      <div className="mx-auto max-w-[1400px] px-4 sm:px-6 lg:px-8 py-6 sm:py-8 md:py-12">
+        {seasons.length > 1 && (
+          <div className="mb-4 sm:mb-5 flex flex-wrap items-center gap-2">
+            <span className="text-xs sm:text-sm font-semibold text-zinc-700 mr-1">Сезоны:</span>
+            {seasons.map(s => (
+              <Link key={s.id} to={`/season/${s.season_number}?anime=${anime.id}`}
+                className={`px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-semibold transition ${
+                  s.season_number === seasonNum ? 'bg-zinc-900 text-white' : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
+                }`}>
+                Сезон {s.season_number}
+              </Link>
             ))}
           </div>
-        ) : (
-          <div className="space-y-2">
-            {items.map(v => <VideoRow key={v.id} anime={v} />)}
-          </div>
         )}
+
+        <div className="bg-white rounded-xl sm:rounded-2xl border border-zinc-200 overflow-hidden">
+          <div className="px-4 sm:px-5 py-2.5 sm:py-3 border-b border-zinc-100">
+            <h2 className="font-semibold text-zinc-900 text-sm sm:text-base">Серии</h2>
+          </div>
+          {episodes.length === 0 ? (
+            <div className="px-4 py-10 sm:py-12 text-center text-xs sm:text-sm text-zinc-500">
+              Серий пока нет
+            </div>
+          ) : (
+            <div className="divide-y divide-zinc-100">
+              {episodes.map(ep => (
+                <Link key={ep.id} to={`/watch/${ep.id}`}
+                  className="flex items-center gap-3 sm:gap-4 px-4 sm:px-5 py-2.5 sm:py-3 hover:bg-zinc-50 transition">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-gradient-to-br from-zinc-700 to-zinc-900 flex items-center justify-center text-white font-bold text-xs sm:text-sm shrink-0">
+                    {ep.episode_number}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-xs sm:text-sm text-zinc-900">Серия {ep.episode_number} · {ep.title}</div>
+                    <div className="text-xs text-zinc-500 line-clamp-1 mt-0.5 hidden xs:block">{ep.description}</div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
-}
-
-function VideoRow({ anime }: { anime: Anime }) {
-  return (
-    <Link to={`/anime/${anime.id}`} className="group flex items-center gap-4 rounded-2xl border border-zinc-200 bg-white p-3 transition-all hover:-translate-y-0.5 hover:shadow-lg">
-      <div className="relative h-24 w-16 flex-shrink-0 overflow-hidden rounded-lg sm:h-28 sm:w-20">
-        <img src={anime.banner} alt={anime.title} loading="lazy" className="h-full w-full object-cover" />
-      </div>
-      <div className="flex flex-1 flex-col min-w-0">
-        <h3 className="line-clamp-1 text-sm font-semibold text-zinc-900 group-hover:underline">{anime.title}</h3>
-        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
-          <span className="font-semibold text-zinc-900">★ {store.avgRating(anime.id).toFixed(1) || '—'}</span>
-          <span>·</span>
-          <span>{anime.year}</span>
-          <span>·</span>
-          <span className="truncate">{anime.genres.slice(0, 2).join(', ')}</span>
-        </div>
-        <p className="mt-1 line-clamp-1 text-xs text-zinc-500">{anime.description}</p>
-      </div>
-    </Link>
-  );
-}
-
-function pluralize(n: number, forms: [string, string, string]) {
-  const n100 = n % 100;
-  const n10 = n % 10;
-  if (n100 >= 11 && n100 <= 14) return forms[2];
-  if (n10 === 1) return forms[0];
-  if (n10 >= 2 && n10 <= 4) return forms[1];
-  return forms[2];
 }

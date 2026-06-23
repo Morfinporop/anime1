@@ -1,12 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import VideoCard from '../components/VideoCard';
-import { store } from '../store';
+import { api } from '../api';
 import type { Anime, SortType } from '../types';
 import { FilterIcon, GridIcon, ListIcon } from '../components/icons';
+import { bannerUrl, FALLBACK_BANNER } from '../hooks';
 
 const PAGE_SIZE = 24;
 type View = 'grid' | 'list';
+
+// Уменьшенный hero без большого затемнения — текст прямо на светлой картинке
+const HERO_BG = 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSXUgdrfGB0cEVNygm2BZRO2972CZA1Fcc1jBoKIV6Suw&s=10';
 
 export default function HomePage() {
   const [items, setItems] = useState<Anime[]>([]);
@@ -19,21 +23,18 @@ export default function HomePage() {
 
   useEffect(() => {
     setLoading(true);
-    setItems(store.listAnime(sort, genre));
-    setDisplayCount(PAGE_SIZE);
-    setLoading(false);
+    api.listAnime(sort, genre).then(items => {
+      setItems(items.filter(a => a.views_count >= 0));
+      setDisplayCount(PAGE_SIZE);
+      setLoading(false);
+    }).catch(() => setLoading(false));
   }, [sort, genre]);
 
   const allGenres = useMemo(() => {
     const s = new Set<string>();
-    store.listAnime('newest', null).forEach(a => a.genres.forEach(g => s.add(g)));
+    items.forEach((a: Anime) => a.genres.forEach((g: string) => s.add(g)));
     return ['all', ...Array.from(s).sort()];
-  }, [items.length]);
-
-  const totalSeries = useMemo(() => store.listAnime('newest', null).length, [items.length]);
-  const totalVideos = useMemo(() => {
-    return store.listAnime('newest', null).reduce((acc, a) => acc + store.listEpisodes(a.id).length, 0);
-  }, [items.length]);
+  }, [items]);
 
   useEffect(() => {
     const el = sentinelRef.current;
@@ -51,53 +52,53 @@ export default function HomePage() {
 
   return (
     <div className="animate-fade-in">
-      {/* HERO с картинкой и текстом сверху */}
-      <section className="relative overflow-hidden">
-        <img
-          src="https://img.magnific.com/free-photo/anime-style-cozy-home-interior-with-furnishings_23-2151176465.jpg?semt=ais_hybrid&w=1400&q=80"
-          alt=""
-          className="w-full h-[500px] sm:h-[600px] object-cover"
-        />
-        {/* Затемнение снизу для текста */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-black/20" />
-        <div className="absolute inset-x-0 top-0 px-5 sm:px-8 pt-8 sm:pt-12">
-          <h1 className="text-display text-5xl text-white sm:text-7xl lg:text-[6.5rem] leading-[0.95]">
-            Аниме
-          </h1>
-          <p className="mt-3 max-w-xl text-sm sm:text-base text-white/90">
-            Сотни тайтлов, тысячи серий в одном месте.
-          </p>
-          <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-white">
-            <span className="rounded-full bg-white/15 backdrop-blur-md px-3 py-1.5 font-semibold text-white border border-white/20">
-              {totalSeries} {pluralize(totalSeries, ['тайтл', 'тайтла', 'тайтлов'])}
-            </span>
-            <span className="rounded-full bg-white/15 backdrop-blur-md px-3 py-1.5 font-medium text-white border border-white/20">
-              {totalVideos} {pluralize(totalVideos, ['серия', 'серии', 'серий'])}
-            </span>
-            <span className="rounded-full bg-white/15 backdrop-blur-md px-3 py-1.5 font-medium text-white border border-white/20">HD · Full HD</span>
+      {/* HERO — светлая картинка с тонким затемнением, текст на ней */}
+      <section className="relative overflow-hidden border-b border-zinc-200">
+        <div className="absolute inset-0">
+          <img
+            src={HERO_BG}
+            alt=""
+            className="h-full w-full object-cover"
+          />
+          <div
+            className="absolute inset-0"
+            style={{ background: 'linear-gradient(180deg, rgba(255,245,250,0.4) 0%, rgba(255,245,250,0.6) 50%, rgba(255,245,250,0.95) 100%)' }}
+          />
+        </div>
+
+        <div className="relative mx-auto max-w-[1400px] px-4 sm:px-6 lg:px-8 pt-6 pb-6 sm:pt-10 sm:pb-8">
+          <div className="max-w-3xl animate-slide-up">
+            <h1 className="text-display text-4xl sm:text-5xl lg:text-6xl leading-[1]">
+              <span className="text-pink-300">Аниме.</span>
+              <br />
+              <span className="text-zinc-900">Одно место.</span>
+            </h1>
+            <p className="mt-3 max-w-lg text-sm leading-relaxed text-zinc-400 sm:text-base">
+              Сотни тайтлов в высоком качестве с разными озвучками и продвинутым плеером.
+            </p>
           </div>
         </div>
       </section>
 
       {/* КАТАЛОГ */}
-      <section className="mx-auto max-w-[1400px] px-5 pb-12 sm:px-8 sm:pb-16">
-        <div className="sticky top-14 z-20 mb-5 -mx-5 border-b border-zinc-200 bg-white/90 px-5 py-3 backdrop-blur-md sm:-mx-8 sm:px-8">
+      <section className="mx-auto max-w-[1400px] px-4 sm:px-6 lg:px-8 pb-10 sm:pb-12 md:pb-16">
+        <div className="sticky top-14 z-20 mb-4 sm:mb-5 -mx-4 sm:-mx-6 lg:-mx-8 border-b border-zinc-200 bg-white/95 px-4 sm:px-6 lg:px-8 py-2.5 sm:py-3 backdrop-blur-md">
           <div className="flex flex-wrap items-center gap-2">
-            <FilterIcon className="h-4 w-4 text-zinc-400" />
+            <FilterIcon className="h-4 w-4 text-zinc-400 shrink-0" />
             <select value={genre} onChange={(e) => setGenre(e.target.value)}
-              className="rounded-full border border-zinc-200 bg-white px-3.5 py-1.5 text-xs font-medium text-zinc-700 outline-none hover:bg-zinc-50 transition cursor-pointer">
+              className="rounded-full border border-zinc-200 bg-white px-3 sm:px-3.5 py-1.5 text-xs font-medium text-zinc-700 outline-none hover:bg-zinc-50 cursor-pointer max-w-[140px] sm:max-w-none">
               {allGenres.map(g => <option key={g} value={g}>{g === 'all' ? 'Все жанры' : g}</option>)}
             </select>
             <select value={sort} onChange={(e) => setSort(e.target.value as SortType)}
-              className="rounded-full border border-zinc-200 bg-white px-3.5 py-1.5 text-xs font-medium text-zinc-700 outline-none hover:bg-zinc-50 transition cursor-pointer">
+              className="rounded-full border border-zinc-200 bg-white px-3 sm:px-3.5 py-1.5 text-xs font-medium text-zinc-700 outline-none hover:bg-zinc-50 cursor-pointer max-w-[140px] sm:max-w-none">
               <option value="popular">По популярности</option>
               <option value="newest">Сначала новые</option>
               <option value="rating">По рейтингу</option>
               <option value="title">По алфавиту</option>
             </select>
-            <div className="flex-1" />
-            <span className="text-xs text-zinc-500">{items.length} {pluralize(items.length, ['тайтл', 'тайтла', 'тайтлов'])}</span>
-            <div className="flex gap-1 rounded-full border border-zinc-200 bg-white p-1">
+            <div className="flex-1 hidden sm:block" />
+            <span className="text-xs text-zinc-500 hidden xs:inline">{items.length} {pluralize(items.length, ['тайтл', 'тайтла', 'тайтлов'])}</span>
+            <div className="flex gap-1 rounded-full border border-zinc-200 bg-white p-1 ml-auto sm:ml-0">
               <button onClick={() => setView('grid')} className={`flex h-7 w-7 items-center justify-center rounded-full transition ${view === 'grid' ? 'bg-zinc-900 text-white' : 'text-zinc-500 hover:bg-zinc-50'}`} aria-label="Сетка">
                 <GridIcon className="h-3.5 w-3.5" />
               </button>
@@ -109,35 +110,29 @@ export default function HomePage() {
         </div>
 
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-20">
-            <div className="h-8 w-8 animate-spin-slow rounded-full border-2 border-zinc-300 border-t-zinc-900" />
-            <p className="mt-3 text-sm text-zinc-500">Загрузка каталога...</p>
-          </div>
+          <CenterSpinner />
         ) : items.length === 0 ? (
-          <div className="rounded-3xl border border-dashed border-zinc-200 bg-white p-10 text-center sm:p-16">
-            <h2 className="text-display text-3xl text-zinc-900 sm:text-4xl">Каталог пуст</h2>
-            <p className="mt-3 mx-auto max-w-md text-sm text-zinc-500">
-              Здесь пока ничего нет — добавьте первый тайтл, чтобы он появился в каталоге.
-            </p>
+          <div className="rounded-2xl sm:rounded-3xl border border-dashed border-zinc-200 bg-white p-8 sm:p-12 md:p-16 text-center">
+            <h2 className="text-display text-2xl sm:text-3xl md:text-4xl text-zinc-900">Каталог пуст</h2>
           </div>
         ) : view === 'grid' ? (
           <>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+            <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-3 sm:gap-4">
               {displayed.map((v, i) => (
                 <div key={v.id} className="animate-fade-in" style={{ animationDelay: `${Math.min(i * 15, 150)}ms` }}>
                   <VideoCard anime={v} />
                 </div>
               ))}
             </div>
-            <div ref={sentinelRef} className="h-16" />
+            <div ref={sentinelRef} className="h-12 sm:h-16" />
             {displayCount >= items.length && items.length > PAGE_SIZE && (
               <div className="py-6 text-center text-xs text-zinc-400">— Конец каталога —</div>
             )}
           </>
         ) : (
           <div className="space-y-2">
-            {displayed.map(v => <VideoRow key={v.id} anime={v} />)}
-            <div ref={sentinelRef} className="h-16" />
+            {displayed.map((v) => <VideoRow key={v.id} anime={v} />)}
+            <div ref={sentinelRef} className="h-12 sm:h-16" />
           </div>
         )}
       </section>
@@ -145,22 +140,29 @@ export default function HomePage() {
   );
 }
 
+function CenterSpinner() {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 sm:py-20">
+      <div className="h-8 w-8 animate-spin-slow rounded-full border-2 border-zinc-300 border-t-zinc-900" />
+    </div>
+  );
+}
+
 function VideoRow({ anime }: { anime: Anime }) {
   return (
-    <Link to={`/anime/${anime.id}`} className="group flex items-center gap-4 rounded-2xl border border-zinc-200 bg-white p-3 transition-all hover:-translate-y-0.5 hover:shadow-lg">
-      <div className="relative h-24 w-16 flex-shrink-0 overflow-hidden rounded-lg sm:h-28 sm:w-20">
-        <img src={anime.banner} alt={anime.title} loading="lazy" className="h-full w-full object-cover" />
+    <Link to={`/anime/${anime.id}`} className="group flex items-center gap-3 sm:gap-4 rounded-xl sm:rounded-2xl border border-zinc-200 bg-white p-3 sm:p-3 transition-all hover:-translate-y-0.5 hover:shadow-lg">
+      <div className="relative h-20 w-14 xs:h-24 xs:w-16 sm:h-28 sm:w-20 flex-shrink-0 overflow-hidden rounded-lg">
+        <img src={bannerUrl(anime.id)} alt={anime.title} loading="lazy" className="h-full w-full object-cover"
+          onError={(e) => { (e.target as HTMLImageElement).src = FALLBACK_BANNER; }} />
       </div>
       <div className="flex flex-1 flex-col min-w-0">
         <h3 className="line-clamp-1 text-sm font-semibold text-zinc-900 group-hover:underline">{anime.title}</h3>
-        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
-          <span className="font-semibold text-zinc-900">★ {store.avgRating(anime.id).toFixed(1) || '—'}</span>
-          <span>·</span>
-          <span>{anime.year}</span>
-          <span>·</span>
-          <span className="truncate">{anime.genres.slice(0, 2).join(', ')}</span>
+        <div className="mt-1 flex flex-wrap items-center gap-1.5 xs:gap-2 text-xs text-zinc-500">
+          <span className="font-semibold text-zinc-900">★ {(anime.rating ?? 0).toFixed(1) || '—'}</span>
+          <span className="hidden xs:inline">·</span>
+          <span className="hidden xs:inline">{anime.year}</span>
         </div>
-        <p className="mt-1 line-clamp-1 text-xs text-zinc-500">{anime.description}</p>
+        <p className="mt-1 line-clamp-1 text-xs text-zinc-500 hidden sm:block">{anime.description}</p>
       </div>
     </Link>
   );
@@ -174,3 +176,4 @@ function pluralize(n: number, forms: [string, string, string]) {
   if (n10 >= 2 && n10 <= 4) return forms[1];
   return forms[2];
 }
+

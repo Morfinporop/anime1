@@ -1,5 +1,22 @@
 @import "tailwindcss";
 
+/* ========== Адаптивные breakpoints (Tailwind v4 совместимость) ========== */
+@theme {
+  --breakpoint-xs: 480px;
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+  --breakpoint-2xl: 1536px;
+}
+
+/* ========== Базовая типографика и сброс ========== */
+html {
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 html, body, #root {
   margin: 0;
   padding: 0;
@@ -9,24 +26,72 @@ html, body, #root {
   color: #18181b;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
-button { cursor: pointer; font-family: inherit; }
-input, textarea, select { font-family: inherit; }
+button {
+  cursor: pointer;
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
 
+input, textarea, select {
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+img, video {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Display-шрифт */
 .text-display {
   font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
   letter-spacing: -0.04em;
   font-weight: 800;
+  word-break: break-word;
+  hyphens: auto;
 }
 
+/* ========== Адаптивные размеры текста ========== */
+/* xs (маленькие телефоны): ~320-480px */
+@media (max-width: 479px) {
+  .text-display {
+    letter-spacing: -0.03em;
+  }
+  html { font-size: 14px; }
+}
+
+/* sm (большие телефоны): 480-640px */
+@media (min-width: 480px) and (max-width: 639px) {
+  html { font-size: 15px; }
+}
+
+/* md+ (планшеты и выше) */
+@media (min-width: 768px) {
+  html { font-size: 16px; }
+}
+
+/* lg+ (ноутбуки и выше) */
+@media (min-width: 1024px) {
+  html { font-size: 16px; }
+}
+
+/* ========== Скроллбары ========== */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
+@media (max-width: 768px) {
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+}
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 10px; }
 ::-webkit-scrollbar-thumb:hover { background: #a1a1aa; }
 
+/* ========== Анимации ========== */
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
@@ -42,9 +107,10 @@ input, textarea, select { font-family: inherit; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .animate-spin-slow { animation: spin 1s linear infinite; }
 
-/* Видеоплеер range */
+/* ========== Видеоплеер range ========== */
 input[type="range"].yt-range {
-  -webkit-appearance: none; appearance: none; background: transparent; height: 3px; cursor: pointer;
+  -webkit-appearance: none; appearance: none;
+  background: transparent; height: 3px; cursor: pointer;
 }
 input[type="range"].yt-range::-webkit-slider-runnable-track {
   height: 3px; background: rgba(255,255,255,0.25); border-radius: 3px;
@@ -59,4 +125,36 @@ input[type="range"].yt-range::-moz-range-track {
 }
 input[type="range"].yt-range::-moz-range-thumb {
   height: 13px; width: 13px; background: #ff0033; border: none; border-radius: 50%;
+}
+
+/* ========== Безопасные отступы для iOS ========== */
+@supports (padding: max(0px)) {
+  body {
+    padding-left: max(0px, env(safe-area-inset-left));
+    padding-right: max(0px, env(safe-area-inset-right));
+  }
+}
+
+/* ========== Утилиты контейнера ========== */
+.container-fluid {
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+@media (min-width: 640px) {
+  .container-fluid { padding-left: 1.5rem; padding-right: 1.5rem; max-width: 640px; }
+}
+@media (min-width: 768px) {
+  .container-fluid { padding-left: 2rem; padding-right: 2rem; max-width: 768px; }
+}
+@media (min-width: 1024px) {
+  .container-fluid { max-width: 1024px; }
+}
+@media (min-width: 1280px) {
+  .container-fluid { max-width: 1280px; padding-left: 2.5rem; padding-right: 2.5rem; }
+}
+@media (min-width: 1536px) {
+  .container-fluid { max-width: 1400px; }
 }

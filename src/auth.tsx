@@ -1,10 +1,10 @@
+// AuthProvider — JWT-токен в localStorage (это сессия, не критические данные),
+// сами данные пользователей — в PostgreSQL
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
-import { hashPassword, store } from './store';
+import { api } from './api';
 import type { User } from './types';
 
-// КРИТИЧНО: localStorage не используется. Только sessionStorage для UI-сессии,
-// а критические данные (пользователи, контент) — на бэкенде (PostgreSQL).
-const SESSION_KEY = 'animeworld:session';
+const TOKEN_KEY = 'aw_token';
 
 interface AuthContextValue {
   user: User | null;
@@ -21,30 +21,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const raw = sessionStorage.getItem(SESSION_KEY);
-    if (raw) {
-      try { setUser(JSON.parse(raw)); } catch { sessionStorage.removeItem(SESSION_KEY); }
-    }
-    setLoading(false);
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) { setLoading(false); return; }
+    api.me().then(u => {
+      setUser(u);
+      if (!u) localStorage.removeItem(TOKEN_KEY);
+      setLoading(false);
+    }).catch(() => {
+      localStorage.removeItem(TOKEN_KEY);
+      setLoading(false);
+    });
   }, []);
 
   const login = useCallback(async (username: string, password: string) => {
-    const hash = await hashPassword(password);
-    const u = store.login(username, hash);
-    setUser(u);
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(u));
+    const { user, token } = await api.login(username, password);
+    localStorage.setItem(TOKEN_KEY, token);
+    setUser(user);
   }, []);
 
   const register = useCallback(async (username: string, password: string) => {
-    const hash = await hashPassword(password);
-    const u = store.register(username, hash);
-    setUser(u);
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(u));
+    const { user, token } = await api.register(username, password);
+    localStorage.setItem(TOKEN_KEY, token);
+    setUser(user);
   }, []);
 
   const logout = useCallback(() => {
+    localStorage.removeItem(TOKEN_KEY);
     setUser(null);
-    sessionStorage.removeItem(SESSION_KEY);
   }, []);
 
   return (

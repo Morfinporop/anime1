@@ -1,7 +1,8 @@
 export interface User {
   id: number;
   username: string;
-  role: 'user' | 'admin';
+  avatar_color: string;
+  is_admin: boolean;
   can_upload: boolean;
   created_at: string;
 }
@@ -10,56 +11,74 @@ export interface Anime {
   id: number;
   title: string;
   description: string;
-  banner: string;
-  type: 'season' | 'movie' | 'single';
+  poster_mime?: string | null;
+  banner_mime?: string | null;
   genres: string[];
   year: number;
   age_rating: string;
+  type: 'season' | 'single' | 'movie';
+  voiceovers: string[];
+  subtitles: string[];
+  likes_count: number;
+  dislikes_count: number;
+  views_count: number;
+  rating?: number;
+  created_by?: number;
   created_at: string;
-  views: number;
-  likes: number;
-  dislikes: number;
 }
 
-export interface QualitySource {
-  quality: string;
-  url: string;
+export interface Season {
+  id: number;
+  anime_id: number;
+  season_number: number;
+  description: string;
+  episodes_count: number;
+  real_episodes_count?: number;
+  poster_mime?: string | null;
 }
 
 export interface Episode {
   id: number;
+  season_id: number;
   anime_id: number;
-  season: number;
   episode_number: number;
   title: string;
   description: string;
-  video_url: string;
-  /** Разные качества одного и того же видео */
+  duration_seconds: number;
+  size_bytes: number;
+  voiceovers: string[];
+  subtitles: string[];
+  audio_tracks: { id: string; label: string; url?: string; lang?: string }[];
   quality_sources: Record<string, string>;
-  audio_tracks: { id: string; label: string; url: string; lang: string }[];
-  audio_label: string;
-  duration: number;
-  views: number;
+  views_count: number;
+  video_mime?: string;
   created_at: string;
 }
 
 export interface Comment {
   id: number;
+  anime_id: number;
+  episode_id?: number;
   user_id: number;
-  episode_id: number;
-  content: string;
   username: string;
   avatar_color: string;
+  is_admin: boolean;
+  text: string;
   likes: number;
   liked_by_me: boolean;
   created_at: string;
 }
 
-export interface Rating {
+export interface HistoryItem {
   id: number;
-  user_id: number;
+  watched_at: string;
   episode_id: number;
-  value: number;
+  episode_number: number;
+  episode_title: string;
+  anime_id: number;
+  anime_title: string;
+  poster_mime?: string | null;
+  type: string;
 }
 
 export type SortType = 'popular' | 'newest' | 'rating' | 'title';
