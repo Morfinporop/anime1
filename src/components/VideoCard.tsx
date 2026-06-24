@@ -4,6 +4,7 @@ import type { Anime, Episode } from '../types';
 import { api } from '../api';
 import { useAuth } from '../auth';
 import { HeartIcon, PlayIcon } from './icons';
+import { getAnimeBannerUrl } from '../hooks';
 
 interface Props {
   anime: Anime;
@@ -32,14 +33,8 @@ export default function VideoCard({ anime }: Props) {
   }, [user, anime.id]);
 
   useEffect(() => {
-    // Проверяем наличие баннера
-    if (anime.banner) {
-      setBannerUrl(anime.banner);
-    } else if (anime.poster) {
-      setBannerUrl(anime.poster);
-    } else {
-      setBannerUrl('/images/logov.png');
-    }
+    // Устанавливаем URL баннера
+    setBannerUrl(getAnimeBannerUrl(anime.id));
   }, [anime]);
 
   const toggleFav = async (e: React.MouseEvent) => {

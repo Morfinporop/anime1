@@ -11,8 +11,6 @@ export interface Anime {
   id: number;
   title: string;
   description: string;
-  poster: string;
-  banner: string;
   genres: string[];
   year: number;
   ageRating: string;
@@ -30,8 +28,7 @@ export interface Episode {
   seasonId: number;
   episodeNumber: number;
   title: string;
-  videoUrl: string;
-  poster: string;
+  durationSeconds: number;
   viewsCount: number;
   audioTracks: AudioTrack[];
   subtitles: Subtitle[];
@@ -72,14 +69,12 @@ export interface Season {
   animeId: number;
   seasonNumber: number;
   description: string;
-  poster: string;
   createdAt: string;
 }
 
 export interface Favorite {
   id: number;
   title: string;
-  poster: string;
   year: number;
   likesCount: number;
   rating: number;
@@ -90,7 +85,6 @@ export interface HistoryItem {
   episodeId: number;
   episodeTitle: string;
   animeTitle: string;
-  animePoster: string;
   lastWatched: string;
   watchedSeconds: number;
 }

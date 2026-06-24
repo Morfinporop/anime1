@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import type { Anime, Season } from '../types';
-import { bannerUrl, FALLBACK_BANNER } from '../hooks';
+import { getAnimeBannerUrl, FALLBACK_BANNER } from '../hooks';
 
 export default function SeasonPage() {
   const { season } = useParams<{ season: string }>();
@@ -52,7 +52,7 @@ export default function SeasonPage() {
     <div className="animate-fade-in">
       <section className="relative">
         <div className="relative h-48 sm:h-64">
-          <img src={bannerUrl(anime.id, anime.banner, anime.poster)} alt="" className="absolute inset-0 w-full h-full object-cover"
+          <img src={getAnimeBannerUrl(anime.id)} alt="" className="absolute inset-0 w-full h-full object-cover"
             onError={(e) => { (e.target as HTMLImageElement).src = FALLBACK_BANNER; }} />
           <div className="absolute inset-0 bg-gradient-to-t from-white via-white/60 to-transparent" />
         </div>

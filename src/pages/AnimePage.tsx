@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../auth';
 import type { Anime, Comment, Episode } from '../types';
-import { getBannerUrl } from '../hooks';
+import { getAnimeBannerUrl } from '../hooks';
 import {
   ArrowLeftIcon, HeartIcon, PlayIcon, ShareIcon, StarIcon,
   ThumbsDownIcon, ThumbsUpIcon, SendIcon,
@@ -55,7 +55,7 @@ export default function AnimePage() {
       setComments(cmts);
       
       // Загружаем баннер
-      const banner = await getBannerUrl(a.banner, a.poster);
+      const banner = getAnimeBannerUrl(a.id);
       setBannerUrl(banner);
       
       // Загружаем эпизоды

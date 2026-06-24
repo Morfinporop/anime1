@@ -122,16 +122,24 @@ export default function UploadPage() {
     try {
       setUploadProgress(30);
       
-      // Создаём аниме с баннером
+      // Создаём аниме без файлов
       const animeId = await api.createAnime({
         title: title.trim(),
         description: description.trim() || '',
         year,
         ageRating,
-        genres: genres.join(', '),
-        banner: bannerFile,
-        poster: bannerFile // Используем баннер и как постер если нет отдельного постера
+        genres: genres.join(', ')
       });
+
+      setUploadProgress(60);
+      
+      // Загружаем баннер
+      await api.uploadAnimeBanner(animeId, bannerFile);
+      
+      setUploadProgress(90);
+      
+      // Загружаем постер (используем баннер как постер)
+      await api.uploadAnimePoster(animeId, bannerFile);
 
       setUploadProgress(100);
       notify.success('Аниме создано успешно!');
@@ -154,14 +162,24 @@ export default function UploadPage() {
     setUploadProgress(10);
     
     try {
-      setUploadProgress(50);
+      setUploadProgress(30);
       
+      // Создаём сезон без постера
       const seasonId = await api.createSeason({
         animeId: Number(selectedAnimeId),
         seasonNumber,
-        description: `Сезон ${seasonNumber}`,
-        poster: posterFile || bannerFile // Используем постер или баннер
+        description: `Сезон ${seasonNumber}`
       });
+
+      setUploadProgress(60);
+      
+      // Загружаем постер сезона если есть, иначе используем баннер аниме
+      if (posterFile) {
+        await api.uploadSeasonPoster(seasonId, posterFile);
+      } else if (bannerFile) {
+        // Используем баннер аниме как постер сезона
+        await api.uploadSeasonPoster(seasonId, bannerFile);
+      }
 
       setUploadProgress(100);
       notify.success(`Сезон ${seasonNumber} создан!`);
@@ -203,10 +221,17 @@ export default function UploadPage() {
         const newSeasonId = await api.createSeason({
           animeId: Number(selectedAnimeId),
           seasonNumber,
-          description: `Сезон ${seasonNumber}`,
-          poster: posterFile || bannerFile
+          description: `Сезон ${seasonNumber}`
         });
         seasonId = newSeasonId;
+        
+        // Загружаем постер сезона если есть, иначе используем баннер аниме
+        if (posterFile) {
+          await api.uploadSeasonPoster(seasonId, posterFile);
+        } else if (bannerFile) {
+          // Используем баннер аниме как постер сезона
+          await api.uploadSeasonPoster(seasonId, bannerFile);
+        }
       }
 
       // Загружаем эпизод с прогрессом

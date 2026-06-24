@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 import type { Anime } from '../types';
-import { getBannerUrl } from '../hooks';
+import { getAnimeBannerUrl } from '../hooks';
 
 interface RecommendationsProps {
   currentAnimeId: number;
@@ -59,15 +59,9 @@ export function Recommendations({ currentAnimeId, maxItems = 6 }: Recommendation
 
         setRecommendations(recommendationsList);
 
-        // Загружаем баннеры для рекомендаций
-        const bannerPromises = recommendationsList.map(async (anime) => {
-          const bannerUrl = await getBannerUrl(anime.banner, anime.poster);
-          return { id: anime.id, bannerUrl };
-        });
-
-        const banners = await Promise.all(bannerPromises);
-        const bannerMap = banners.reduce((acc, { id, bannerUrl }) => {
-          acc[id] = bannerUrl;
+        // Устанавливаем URL баннеров для рекомендаций
+        const bannerMap = recommendationsList.reduce((acc, anime) => {
+          acc[anime.id] = getAnimeBannerUrl(anime.id);
           return acc;
         }, {} as Record<number, string>);
 

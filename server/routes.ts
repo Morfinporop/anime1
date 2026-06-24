@@ -6,122 +6,6 @@ import {
   requireAuth, requireAdmin, requireUploadPermission,
   type UserPayload,
 } from './auth.js';
-import path from 'path';
-import fs from 'fs';
-import { fileURLToPath } from 'url';
-import { spawn } from 'child_process';
-import multer from 'multer';
-import { extname } from 'path';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Директория для временных файлов
-const uploadDir = path.join(__dirname, '..', 'uploads');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
-
-// Настройка multer для загрузки файлов
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, uploadDir);
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + extname(file.originalname));
-  }
-});
-
-const upload = multer({ 
-  storage: storage,
-  limits: {
-    fileSize: 500 * 1024 * 1024, // 500MB
-  },
-  fileFilter: function (req, file, cb) {
-    // Разрешаем видео файлы и изображения
-    const allowedVideoFormats = ['.mp4', '.avi', '.mov', '.mkv', '.webm', '.flv'];
-    const allowedImageFormats = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
-    const fileExt = extname(file.originalname).toLowerCase();
-    
-    if (file.fieldname === 'video') {
-      if (allowedVideoFormats.includes(fileExt)) {
-        cb(null, true);
-      } else {
-        cb(new Error('Неподдерживаемый формат видео. Разрешены: mp4, avi, mov, mkv, webm, flv'));
-      }
-    } else if (file.fieldname === 'poster' || file.fieldname === 'banner') {
-      if (allowedImageFormats.includes(fileExt)) {
-        cb(null, true);
-      } else {
-        cb(new Error('Неподдерживаемый формат изображения. Разрешены: jpg, jpeg, png, gif, webp'));
-      }
-    } else {
-      cb(null, true);
-    }
-  }
-});
-
-// Проверка доступности FFmpeg
-async function checkFFmpegAvailable(): Promise<boolean> {
-  return new Promise((resolve) => {
-    const ffmpegCheck = spawn('ffmpeg', ['-version']);
-    
-    ffmpegCheck.on('close', (code) => {
-      resolve(code === 0);
-    });
-    
-    ffmpegCheck.on('error', () => {
-      resolve(false);
-    });
-  });
-}
-
-// Функция сжатия видео через FFmpeg
-async function compressVideo(inputPath: string, outputPath: string, maxSizeMB: number = 500): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const args = [
-      '-i', inputPath,
-      '-c:v', 'libx264',
-      '-preset', 'medium',
-      '-crf', '28',
-      '-c:a', 'aac',
-      '-b:a', '128k',
-      '-movflags', '+faststart',
-      '-fs', `${maxSizeMB * 1024 * 1024}`,
-      '-y',
-      outputPath
-    ];
-    
-    const ffmpeg = spawn('ffmpeg', args);
-    let stderr = '';
-    
-    ffmpeg.stderr.on('data', (data) => { stderr += data.toString(); });
-    
-    ffmpeg.on('close', (code) => {
-      if (code === 0) {
-        resolve();
-      } else {
-        console.error('[ffmpeg] error:', stderr);
-        reject(new Error(`FFmpeg failed with code ${code}`));
-      }
-    });
-    
-    ffmpeg.on('error', (err) => {
-      console.error('[ffmpeg] spawn error:', err);
-      reject(err);
-    });
-  });
-}
-
-// Утилита для очистки временных файлов
-function cleanupTempFiles(files: string[]) {
-  files.forEach(f => {
-    try {
-      if (fs.existsSync(f)) fs.unlinkSync(f);
-    } catch {}
-  });
-}
 
 export const router = Router();
 
@@ -185,7 +69,7 @@ router.post('/auth/login', async (req, res) => {
   }
 });
 
-router.post('/auth/logout', (_, res) => {
+router.post('/auth/logout', (_req, res) => {
   res.clearCookie?.('token');
   res.json({ ok: true });
 });
@@ -236,8 +120,6 @@ router.get('/anime', async (req, res) => {
       year: r.year,
       ageRating: r.age_rating || '12+',
       genres: Array.isArray(r.genres) ? r.genres : [r.genres || 'Неизвестно'],
-      poster: r.poster || '',
-      banner: r.banner || '',
       viewsCount: Number(r.viewscount),
       episodesCount: Number(r.episodescount),
       likesCount: Number(r.likescount),
@@ -283,8 +165,6 @@ router.get('/anime/:id', async (req, res) => {
       year: r.year,
       ageRating: r.age_rating || '12+',
       genres: Array.isArray(r.genres) ? r.genres : [r.genres || 'Неизвестно'],
-      poster: r.poster || '',
-      banner: r.banner || '',
       viewsCount: Number(r.viewscount),
       episodesCount: Number(r.episodescount),
       likesCount: Number(r.likescount),
@@ -300,29 +180,11 @@ router.get('/anime/:id', async (req, res) => {
   }
 });
 
-// Создание нового аниме с загрузкой баннера
-router.post('/anime', requireAuth, requireUploadPermission, upload.fields([
-  { name: 'poster', maxCount: 1 },
-  { name: 'banner', maxCount: 1 }
-]), async (req, res) => {
+// Создание нового аниме (без файлов)
+router.post('/anime', requireAuth, requireUploadPermission, async (req, res) => {
   try {
     const { title, description, year, ageRating, genres } = req.body;
     if (!title) return res.status(400).json({ error: 'Название обязательно' });
-
-    // Обработка файлов
-    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
-    let posterPath = '';
-    let bannerPath = '';
-
-    if (files?.poster?.[0]) {
-      const posterFile = files.poster[0];
-      posterPath = `/uploads/${posterFile.filename}`;
-    }
-
-    if (files?.banner?.[0]) {
-      const bannerFile = files.banner[0];
-      bannerPath = `/uploads/${bannerFile.filename}`;
-    }
 
     // Преобразование жанров в массив
     const genresArray = genres 
@@ -330,45 +192,35 @@ router.post('/anime', requireAuth, requireUploadPermission, upload.fields([
       : ['Неизвестно'];
 
     const { rows } = await query(
-      `INSERT INTO anime (title, description, year, age_rating, genres, poster, banner, author_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `INSERT INTO anime (title, description, year, age_rating, genres, author_id)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id`,
       [title, description || '', Number(year) || new Date().getFullYear(), 
-       ageRating || '12+', genresArray, posterPath, bannerPath, req.user?.id]
+       ageRating || '12+', genresArray, req.user?.id]
     );
 
     res.json({ animeId: rows[0].id });
   } catch (err: any) {
     console.error('[create anime]', err.message);
-    cleanupTempFiles([
-      (req.files as any)?.poster?.[0]?.path,
-      (req.files as any)?.banner?.[0]?.path
-    ].filter(Boolean));
     res.status(500).json({ error: 'Ошибка сервера' });
   }
 });
 
 // ================== SEASONS ==================
-router.post('/anime/:id/seasons', requireAuth, requireUploadPermission, upload.single('poster'), async (req, res) => {
+router.post('/anime/:id/seasons', requireAuth, requireUploadPermission, async (req, res) => {
   try {
     const animeId = Number(req.params.id);
     const { seasonNumber, description } = req.body;
-    let posterPath = '';
     
-    if (req.file) {
-      posterPath = `/uploads/${req.file.filename}`;
-    }
-
     const { rows } = await query(
-      `INSERT INTO seasons (anime_id, season_number, description, poster)
-       VALUES ($1, $2, $3, $4) RETURNING id`,
-      [animeId, Number(seasonNumber), description || '', posterPath]
+      `INSERT INTO seasons (anime_id, season_number, description)
+       VALUES ($1, $2, $3) RETURNING id`,
+      [animeId, Number(seasonNumber), description || '']
     );
 
     res.json({ seasonId: rows[0].id });
   } catch (err: any) {
     console.error('[create season]', err.message);
-    if (req.file) cleanupTempFiles([req.file.path]);
     res.status(500).json({ error: 'Ошибка сервера' });
   }
 });
@@ -384,8 +236,7 @@ router.get('/seasons/:id/episodes', async (req, res) => {
       seasonId: r.season_id,
       episodeNumber: r.episode_number,
       title: r.title || `Эпизод ${r.episode_number}`,
-      videoUrl: r.video_url || '',
-      poster: r.poster || '',
+      durationSeconds: r.duration_seconds || 0,
       createdAt: r.created_at,
     }));
     res.json({ episodes });
@@ -395,58 +246,19 @@ router.get('/seasons/:id/episodes', async (req, res) => {
   }
 });
 
-// ================== EPISODES (загрузка видео с сжатием) ==================
-router.post('/seasons/:id/episodes', requireAuth, requireUploadPermission, upload.fields([
-  { name: 'video', maxCount: 1 },
-  { name: 'poster', maxCount: 1 }
-]), async (req, res) => {
+// ================== EPISODES ==================
+router.post('/seasons/:id/episodes', requireAuth, requireUploadPermission, async (req, res) => {
   try {
     const seasonId = Number(req.params.id);
     const { episodeNumber, title } = req.body;
-    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
     
-    if (!files?.video?.[0]) {
-      return res.status(400).json({ error: 'Видео файл обязателен' });
-    }
+    const { rows } = await query(
+      `INSERT INTO episodes (season_id, episode_number, title)
+       VALUES ($1, $2, $3) RETURNING id`,
+      [seasonId, Number(episodeNumber), title || `Эпизод ${episodeNumber}`]
+    );
 
-    const videoFile = files.video[0];
-    const tempVideoPath = videoFile.path;
-    const compressedVideoPath = tempVideoPath.replace(/\.[^.]+$/, '_compressed.mp4');
-    const tempFiles = [tempVideoPath, compressedVideoPath];
-
-    try {
-      // Сжатие видео до 500MB
-      await compressVideo(tempVideoPath, compressedVideoPath, 500);
-      
-      // Перенос сжатого видео в постоянное хранилище
-      const finalVideoPath = path.join(uploadDir, path.basename(compressedVideoPath));
-      fs.renameSync(compressedVideoPath, finalVideoPath);
-      const videoUrl = `/uploads/${path.basename(finalVideoPath)}`;
-
-      // Обработка постера
-      let posterPath = '';
-      if (files?.poster?.[0]) {
-        const posterFile = files.poster[0];
-        posterPath = `/uploads/${posterFile.filename}`;
-        tempFiles.push(posterFile.path);
-      }
-
-      // Сохранение в БД
-      const { rows } = await query(
-        `INSERT INTO episodes (season_id, episode_number, title, video_url, poster)
-         VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-        [seasonId, Number(episodeNumber), title || `Эпизод ${episodeNumber}`, videoUrl, posterPath]
-      );
-
-      // Очистка временных файлов (кроме исходного видео)
-      cleanupTempFiles([tempVideoPath]);
-
-      res.json({ episodeId: rows[0].id });
-    } catch (compressErr: any) {
-      console.error('[video compression]', compressErr.message);
-      cleanupTempFiles(tempFiles);
-      res.status(500).json({ error: 'Ошибка сжатия видео' });
-    }
+    res.json({ episodeId: rows[0].id });
   } catch (err: any) {
     console.error('[upload episode]', err.message);
     res.status(500).json({ error: 'Ошибка сервера' });
@@ -646,7 +458,7 @@ router.post('/anime/:id/rate', requireAuth, async (req, res) => {
 router.get('/favorites', requireAuth, async (req, res) => {
   try {
     const { rows } = await query(
-      `SELECT a.id, a.title, a.poster, a.year
+      `SELECT a.id, a.title, a.year
        FROM favorites f
        JOIN anime a ON a.id = f.anime_id
        WHERE f.user_id = $1
@@ -691,7 +503,7 @@ router.post('/favorites/:id', requireAuth, async (req, res) => {
 router.get('/history', requireAuth, async (req, res) => {
   try {
     const { rows } = await query(
-      `SELECT v.*, e.title as episode_title, a.title as anime_title, a.poster as anime_poster
+      `SELECT v.*, e.title as episode_title, a.title as anime_title
        FROM views v
        JOIN episodes e ON e.id = v.episode_id
        JOIN seasons s ON s.id = e.season_id
@@ -782,24 +594,7 @@ router.delete('/admin/comments/:id', requireAuth, requireAdmin, async (req, res)
 
 router.delete('/admin/anime/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
-    // Получаем информацию о файлах для удаления
-    const animeRes = await query(
-      `SELECT poster, banner FROM anime WHERE id = $1`,
-      [req.params.id]
-    );
-    const anime = animeRes.rows[0];
-    
-    // Удаляем связанные файлы
-    if (anime?.poster) {
-      const posterPath = path.join(uploadDir, path.basename(anime.poster));
-      if (fs.existsSync(posterPath)) fs.unlinkSync(posterPath);
-    }
-    if (anime?.banner) {
-      const bannerPath = path.join(uploadDir, path.basename(anime.banner));
-      if (fs.existsSync(bannerPath)) fs.unlinkSync(bannerPath);
-    }
-    
-    // Удаляем аниме из БД
+    // Удаляем аниме из БД (все связанные данные удалятся каскадно)
     await query(`DELETE FROM anime WHERE id = $1`, [req.params.id]);
     res.json({ ok: true });
   } catch (err: any) {
@@ -808,14 +603,194 @@ router.delete('/admin/anime/:id', requireAuth, requireAdmin, async (req, res) =>
   }
 });
 
-// ================== STATIC FILES ==================
-// Отдача загруженных файлов
-router.use('/uploads', (req, res, next) => {
-  const filePath = path.join(uploadDir, req.path);
-  if (fs.existsSync(filePath)) {
-    res.sendFile(filePath);
-  } else {
-    next();
+// ================== FILE ENDPOINTS ==================
+
+// Получение постера аниме
+router.get('/files/anime/:id/poster', async (req, res) => {
+  try {
+    const { rows } = await query(
+      `SELECT poster_data, poster_mime FROM anime WHERE id = $1`,
+      [req.params.id]
+    );
+    const anime = rows[0];
+    if (!anime || !anime.poster_data) {
+      res.status(404).json({ error: 'Постер не найден' });
+      return;
+    }
+
+    res.setHeader('Content-Type', anime.poster_mime || 'image/jpeg');
+    res.send(anime.poster_data);
+  } catch (err: any) {
+    console.error('[get poster]', err.message);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+// Получение баннера аниме
+router.get('/files/anime/:id/banner', async (req, res) => {
+  try {
+    const { rows } = await query(
+      `SELECT banner_data, banner_mime FROM anime WHERE id = $1`,
+      [req.params.id]
+    );
+    const anime = rows[0];
+    if (!anime || !anime.banner_data) {
+      res.status(404).json({ error: 'Баннер не найден' });
+      return;
+    }
+
+    res.setHeader('Content-Type', anime.banner_mime || 'image/jpeg');
+    res.send(anime.banner_data);
+  } catch (err: any) {
+    console.error('[get banner]', err.message);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+// Получение постера сезона
+router.get('/files/season/:id/poster', async (req, res) => {
+  try {
+    const { rows } = await query(
+      `SELECT poster_data, poster_mime FROM seasons WHERE id = $1`,
+      [req.params.id]
+    );
+    const season = rows[0];
+    if (!season || !season.poster_data) {
+      res.status(404).json({ error: 'Постер не найден' });
+      return;
+    }
+
+    res.setHeader('Content-Type', season.poster_mime || 'image/jpeg');
+    res.send(season.poster_data);
+  } catch (err: any) {
+    console.error('[get season poster]', err.message);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+// Получение видео эпизода
+router.get('/files/episode/:id/video', async (req, res) => {
+  try {
+    const { rows } = await query(
+      `SELECT video_data, video_mime FROM episodes WHERE id = $1`,
+      [req.params.id]
+    );
+    const episode = rows[0];
+    if (!episode || !episode.video_data) {
+      res.status(404).json({ error: 'Видео не найдено' });
+      return;
+    }
+
+    res.setHeader('Content-Type', episode.video_mime || 'video/mp4');
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.send(episode.video_data);
+  } catch (err: any) {
+    console.error('[get video]', err.message);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+// Загрузка постера для аниме
+router.post('/files/anime/:id/poster', requireAuth, requireUploadPermission, async (req, res) => {
+  try {
+    const animeId = req.params.id;
+    const { data, mime } = req.body;
+    
+    if (!data || !mime) {
+      return res.status(400).json({ error: 'Данные файла обязательны' });
+    }
+    
+    if (!mime.startsWith('image/')) {
+      return res.status(400).json({ error: 'Файл должен быть изображением' });
+    }
+
+    await query(
+      `UPDATE anime SET poster_data = $1, poster_mime = $2 WHERE id = $3`,
+      [Buffer.from(data, 'base64'), mime, animeId]
+    );
+
+    res.json({ ok: true });
+  } catch (err: any) {
+    console.error('[upload poster]', err.message);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+// Загрузка баннера для аниме
+router.post('/files/anime/:id/banner', requireAuth, requireUploadPermission, async (req, res) => {
+  try {
+    const animeId = req.params.id;
+    const { data, mime } = req.body;
+    
+    if (!data || !mime) {
+      return res.status(400).json({ error: 'Данные файла обязательны' });
+    }
+    
+    if (!mime.startsWith('image/')) {
+      return res.status(400).json({ error: 'Файл должен быть изображением' });
+    }
+
+    await query(
+      `UPDATE anime SET banner_data = $1, banner_mime = $2 WHERE id = $3`,
+      [Buffer.from(data, 'base64'), mime, animeId]
+    );
+
+    res.json({ ok: true });
+  } catch (err: any) {
+    console.error('[upload banner]', err.message);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+// Загрузка постера для сезона
+router.post('/files/season/:id/poster', requireAuth, requireUploadPermission, async (req, res) => {
+  try {
+    const seasonId = req.params.id;
+    const { data, mime } = req.body;
+    
+    if (!data || !mime) {
+      return res.status(400).json({ error: 'Данные файла обязательны' });
+    }
+    
+    if (!mime.startsWith('image/')) {
+      return res.status(400).json({ error: 'Файл должен быть изображением' });
+    }
+
+    await query(
+      `UPDATE seasons SET poster_data = $1, poster_mime = $2 WHERE id = $3`,
+      [Buffer.from(data, 'base64'), mime, seasonId]
+    );
+
+    res.json({ ok: true });
+  } catch (err: any) {
+    console.error('[upload season poster]', err.message);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+// Загрузка видео для эпизода
+router.post('/files/episode/:id/video', requireAuth, requireUploadPermission, async (req, res) => {
+  try {
+    const episodeId = req.params.id;
+    const { data, mime, durationSeconds, sizeBytes } = req.body;
+    
+    if (!data || !mime) {
+      return res.status(400).json({ error: 'Данные файла обязательны' });
+    }
+    
+    if (!mime.startsWith('video/')) {
+      return res.status(400).json({ error: 'Файл должен быть видео' });
+    }
+
+    await query(
+      `UPDATE episodes SET video_data = $1, video_mime = $2, duration_seconds = $3, size_bytes = $4 WHERE id = $5`,
+      [Buffer.from(data, 'base64'), mime, durationSeconds || 0, sizeBytes || 0, episodeId]
+    );
+
+    res.json({ ok: true });
+  } catch (err: any) {
+    console.error('[upload video]', err.message);
+    res.status(500).json({ error: 'Ошибка сервера' });
   }
 });
 

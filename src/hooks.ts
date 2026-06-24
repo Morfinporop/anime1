@@ -3,42 +3,33 @@
 // Fallback баннер если нет своего
 export const FALLBACK_BANNER = '/images/logov.png';
 
-// Простая функция для проверки наличия изображения
-export function checkImageExists(url: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    if (!url) {
-      resolve(false);
-      return;
-    }
-    
-    const img = new Image();
-    img.onload = () => resolve(true);
-    img.onerror = () => resolve(false);
-    img.src = url;
-    
-    // Таймаут на случай очень медленной загрузки
-    setTimeout(() => resolve(false), 2000);
-  });
+// Получение URL для баннера аниме
+export function getAnimeBannerUrl(animeId: number): string {
+  return `/api/files/anime/${animeId}/banner`;
+}
+
+// Получение URL для постера аниме
+export function getAnimePosterUrl(animeId: number): string {
+  return `/api/files/anime/${animeId}/poster`;
+}
+
+// Получение URL для постера сезона
+export function getSeasonPosterUrl(seasonId: number): string {
+  return `/api/files/season/${seasonId}/poster`;
+}
+
+// Получение URL для видео эпизода
+export function getEpisodeVideoUrl(episodeId: number): string {
+  return `/api/files/episode/${episodeId}/video`;
 }
 
 // Синхронная функция для получения URL баннера (для использования в рендере)
-export function bannerUrl(_animeId: number, banner?: string, poster?: string): string {
-  if (banner && banner.startsWith('/uploads/')) return banner;
-  if (poster && poster.startsWith('/uploads/')) return poster;
-  return FALLBACK_BANNER;
+export function bannerUrl(animeId: number): string {
+  return getAnimeBannerUrl(animeId);
 }
 
-// Асинхронная функция для получения URL баннера с проверкой доступности
-export async function getBannerUrl(banner?: string, poster?: string): Promise<string> {
-  if (banner && banner.startsWith('/uploads/')) {
-    const exists = await checkImageExists(banner);
-    if (exists) return banner;
-  }
-  
-  if (poster && poster.startsWith('/uploads/')) {
-    const exists = await checkImageExists(poster);
-    if (exists) return poster;
-  }
-  
-  return FALLBACK_BANNER;
+// Асинхронная функция для получения URL баннера
+export async function getBannerUrl(animeId: number): Promise<string> {
+  // Просто возвращаем URL, проверка доступности будет происходить при загрузке изображения
+  return getAnimeBannerUrl(animeId);
 }

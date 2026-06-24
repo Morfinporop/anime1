@@ -206,23 +206,18 @@ export interface CreateAnimeOptions {
   year?: number;
   ageRating?: string;
   genres?: string;
-  poster?: File | null;
-  banner?: File | null;
 }
 
 export async function createAnime(opts: CreateAnimeOptions): Promise<number> {
-  const form = new FormData();
-  form.append('title', opts.title);
-  if (opts.description) form.append('description', opts.description);
-  form.append('year', String(opts.year || new Date().getFullYear()));
-  form.append('ageRating', opts.ageRating || '12+');
-  form.append('genres', opts.genres || '');
-  if (opts.poster) form.append('poster', opts.poster);
-  if (opts.banner) form.append('banner', opts.banner);
-
   const { animeId } = await http<{ animeId: number }>('/anime', {
     method: 'POST',
-    body: form,
+    body: JSON.stringify({
+      title: opts.title,
+      description: opts.description || '',
+      year: opts.year || new Date().getFullYear(),
+      ageRating: opts.ageRating || '12+',
+      genres: opts.genres || ''
+    }),
   });
 
   // Инвалидируем кэш каталога
@@ -234,18 +229,15 @@ export interface CreateSeasonOptions {
   animeId: number;
   seasonNumber: number;
   description?: string;
-  poster?: File | null;
 }
 
 export async function createSeason(opts: CreateSeasonOptions): Promise<number> {
-  const form = new FormData();
-  form.append('seasonNumber', String(opts.seasonNumber));
-  if (opts.description) form.append('description', opts.description);
-  if (opts.poster) form.append('poster', opts.poster);
-
   const { seasonId } = await http<{ seasonId: number }>(`/anime/${opts.animeId}/seasons`, {
     method: 'POST',
-    body: form,
+    body: JSON.stringify({
+      seasonNumber: opts.seasonNumber,
+      description: opts.description || ''
+    }),
   });
   return seasonId;
 }
@@ -260,42 +252,31 @@ export interface UploadEpisodeOptions {
 }
 
 export async function uploadEpisode(opts: UploadEpisodeOptions): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', `${API_BASE}/seasons/${opts.seasonId}/episodes`);
-    xhr.withCredentials = true;
-
-    const form = new FormData();
-    form.append('episodeNumber', String(opts.episodeNumber));
-    if (opts.title) form.append('title', opts.title);
-    form.append('video', opts.video);
-    if (opts.poster) form.append('poster', opts.poster);
-
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable && opts.onProgress) {
-        opts.onProgress(Math.round((e.loaded / e.total) * 100));
-      }
-    };
-
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        try {
-          resolve(JSON.parse(xhr.responseText).episodeId);
-        } catch {
-          reject(new Error('Invalid response'));
-        }
-      } else {
-        try {
-          reject(new Error(JSON.parse(xhr.responseText).error || `HTTP ${xhr.status}`));
-        } catch {
-          reject(new Error(`HTTP ${xhr.status}`));
-        }
-      }
-    };
-
-    xhr.onerror = () => reject(new Error('Network error'));
-    xhr.send(form);
+  // Создаем эпизод без видео
+  const { episodeId } = await http<{ episodeId: number }>(`/seasons/${opts.seasonId}/episodes`, {
+    method: 'POST',
+    body: JSON.stringify({
+      episodeNumber: opts.episodeNumber,
+      title: opts.title || `Эпизод ${opts.episodeNumber}`
+    }),
   });
+
+  // Загружаем видео для эпизода
+  if (opts.video) {
+    await uploadVideo({
+      episodeId,
+      video: opts.video,
+      onProgress: opts.onProgress
+    });
+  }
+
+  // Загружаем постер для эпизода (если есть)
+  if (opts.poster) {
+    // Для простоты используем ту же функцию что и для сезона (постер эпизода хранится в той же таблице)
+    await uploadSeasonPoster(opts.seasonId, opts.poster);
+  }
+
+  return episodeId;
 }
 
 // === СЕРИИ СЕЗОНА (с кэшем) ===
@@ -520,7 +501,6 @@ export async function getFavorites(): Promise<
       .map((c) => ({
         id: c.id,
         title: c.title,
-        poster: c.poster,
         year: c.year,
         likesCount: c.likesCount,
         rating: c.rating,
@@ -652,3 +632,78 @@ export const api = {
   preloadAll,
   refreshAll,
 };
+
+
+// ================== FILE UPLOAD FUNCTIONS ==================
+
+// Функция для преобразования файла в base64
+export function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      // Убираем префикс "data:image/jpeg;base64," или аналогичный
+      const base64String = (reader.result as string).split(',')[1];
+      resolve(base64String);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// Загрузка постера для аниме
+export async function uploadAnimePoster(animeId: number, file: File): Promise<void> {
+  const base64Data = await fileToBase64(file);
+  await http(`/files/anime/${animeId}/poster`, {
+    method: 'POST',
+    body: JSON.stringify({
+      data: base64Data,
+      mime: file.type
+    }),
+  });
+}
+
+// Загрузка баннера для аниме
+export async function uploadAnimeBanner(animeId: number, file: File): Promise<void> {
+  const base64Data = await fileToBase64(file);
+  await http(`/files/anime/${animeId}/banner`, {
+    method: 'POST',
+    body: JSON.stringify({
+      data: base64Data,
+      mime: file.type
+    }),
+  });
+}
+
+// Загрузка постера для сезона
+export async function uploadSeasonPoster(seasonId: number, file: File): Promise<void> {
+  const base64Data = await fileToBase64(file);
+  await http(`/files/season/${seasonId}/poster`, {
+    method: 'POST',
+    body: JSON.stringify({
+      data: base64Data,
+      mime: file.type
+    }),
+  });
+}
+
+// Загрузка видео для эпизода
+export interface UploadVideoOptions {
+  episodeId: number;
+  video: File;
+  durationSeconds?: number;
+  sizeBytes?: number;
+  onProgress?: (pct: number) => void;
+}
+
+export async function uploadVideo(opts: UploadVideoOptions): Promise<void> {
+  const base64Data = await fileToBase64(opts.video);
+  await http(`/files/episode/${opts.episodeId}/video`, {
+    method: 'POST',
+    body: JSON.stringify({
+      data: base64Data,
+      mime: opts.video.type,
+      durationSeconds: opts.durationSeconds || 0,
+      sizeBytes: opts.sizeBytes || opts.video.size
+    }),
+  });
+}

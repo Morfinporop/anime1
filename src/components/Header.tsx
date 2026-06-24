@@ -4,7 +4,7 @@ import { useAuth } from '../auth';
 import { api } from '../api';
 import type { Anime } from '../types';
 import { SearchIcon, UserIcon, UploadIcon, LogoutIcon, MenuIcon, CloseIcon } from './icons';
-import { getBannerUrl, FALLBACK_BANNER } from '../hooks';
+import { FALLBACK_BANNER } from '../hooks';
 import { UserAvatar } from './UserAvatar';
 
 export function Header() {

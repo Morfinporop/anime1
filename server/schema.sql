@@ -27,12 +27,10 @@ CREATE TABLE IF NOT EXISTS anime (
   year INT NOT NULL DEFAULT 2024,
   age_rating VARCHAR(8) NOT NULL DEFAULT '12+',
   type VARCHAR(16) NOT NULL DEFAULT 'season',
-  voiceovers TEXT[] NOT NULL DEFAULT '{}',
-  subtitles TEXT[] NOT NULL DEFAULT '{}',
   likes_count INT NOT NULL DEFAULT 0,
   dislikes_count INT NOT NULL DEFAULT 0,
   views_count INT NOT NULL DEFAULT 0,
-  created_by INT REFERENCES users(id) ON DELETE SET NULL,
+  author_id INT REFERENCES users(id) ON DELETE SET NULL,
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
 );

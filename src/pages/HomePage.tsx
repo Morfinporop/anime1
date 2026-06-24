@@ -4,7 +4,7 @@ import VideoCard from '../components/VideoCard';
 import { api } from '../api';
 import type { Anime, SortType } from '../types';
 import { FilterIcon, GridIcon, ListIcon } from '../components/icons';
-import { bannerUrl, FALLBACK_BANNER } from '../hooks';
+import { getAnimeBannerUrl, FALLBACK_BANNER } from '../hooks';
 
 const PAGE_SIZE = 24;
 type View = 'grid' | 'list';
@@ -23,7 +23,7 @@ export default function HomePage() {
 
   // Hero banner - берём из первого популярного аниме
   const heroAnime = items[0];
-  const heroBanner = heroAnime ? bannerUrl(heroAnime.id, heroAnime.banner, heroAnime.poster) : FALLBACK_BANNER;
+  const heroBanner = heroAnime ? getAnimeBannerUrl(heroAnime.id) : FALLBACK_BANNER;
 
   useEffect(() => {
     setLoading(true);
@@ -173,7 +173,7 @@ function VideoRow({ anime }: { anime: Anime }) {
   return (
     <Link to={`/anime/${anime.id}`} className="group flex items-center gap-3 sm:gap-4 rounded-xl sm:rounded-2xl border border-zinc-200 bg-white p-3 sm:p-3 transition-all hover:-translate-y-0.5 hover:shadow-lg">
       <div className="relative h-20 w-14 xs:h-24 xs:w-16 sm:h-28 sm:w-20 flex-shrink-0 overflow-hidden rounded-lg">
-        <img src={bannerUrl(anime.id, anime.banner, anime.poster)} alt={anime.title} loading="lazy" className="h-full w-full object-cover"
+        <img src={getAnimeBannerUrl(anime.id)} alt={anime.title} loading="lazy" className="h-full w-full object-cover"
           onError={(e) => { (e.target as HTMLImageElement).src = FALLBACK_BANNER; }} />
       </div>
       <div className="flex flex-1 flex-col min-w-0">
