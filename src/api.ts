@@ -681,6 +681,8 @@ export const api = {
   login: users.login,
   register: users.register,
 
+  listAnime: loadCatalog,
+  
   loadCatalog,
   getAnimeById,
   searchAnime,
