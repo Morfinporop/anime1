@@ -1,9 +1,3 @@
-// API клиент CorpMult с умным кэшированием
-// Стратегия stale-while-revalidate:
-// - Сначала показываем данные из кэша (мгновенно)
-// - В фоне обновляем с сервера
-// - При заходе на сайт — прогружаем ВСЮ базу (каталог + статы + комментарии)
-
 import type { Anime, Episode, Comment, User } from './types';
 
 import {
@@ -16,16 +10,19 @@ import {
   favoritesCache,
 } from './cache';
 
-// Старый логотип больше не используется — оставлено для справки
 const API_BASE = '/api';
 
-// === HTTP ===
+// ================================================================
+// HTTP
+// ================================================================
 async function http<T>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
     credentials: 'include',
     headers: {
-      ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
+      ...(options.body instanceof FormData
+        ? {}
+        : { 'Content-Type': 'application/json' }),
       ...options.headers,
     },
   });
@@ -36,7 +33,9 @@ async function http<T>(path: string, options: RequestInit = {}): Promise<T> {
   return res.json();
 }
 
-// === ПРЕДЗАГРУЗКА (вызывается при старте приложения) ===
+// ================================================================
+// ПРЕДЗАГРУЗКА
+// ================================================================
 let preloadStarted = false;
 let preloadPromise: Promise<void> | null = null;
 
@@ -48,52 +47,49 @@ export function preloadAll(): Promise<void> {
     preloadStarted = true;
 
     try {
-      // Загружаем параллельно: каталог + текущий пользователь
-      const tasks: Promise<void>[] = [];
-
-      // 1. Каталог
-      tasks.push(
+      await Promise.allSettled([
         (async () => {
-          if (catalogCache.isFresh() && catalogCache.read()) return; // уже свежий
           try {
+            if (catalogCache.isFresh() && catalogCache.read()?.length) return;
             const { items } = await http<{ items: Anime[] }>('/anime?sort=popular');
             catalogCache.write(items || []);
-          } catch {}
+          } catch (e) {
+            console.warn('[preload] catalog failed:', e);
+          }
         })(),
-      );
 
-      // 2. Пользователь
-      tasks.push(
         (async () => {
-          if (userCache.isFresh() && userCache.read() !== null) return;
           try {
+            if (userCache.isFresh() && userCache.read() !== null) return;
             const { user } = await http<{ user: User | null }>('/auth/me');
             userCache.write(user);
-          } catch {}
+          } catch (e) {
+            console.warn('[preload] user failed:', e);
+            userCache.write(null);
+          }
         })(),
-      );
-
-      await Promise.allSettled(tasks);
-    } catch {}
+      ]);
+    } catch (e) {
+      console.warn('[preload] failed:', e);
+    }
   })();
 
   return preloadPromise;
 }
 
-// Принудительное обновление всего кэша с сервера
 export async function refreshAll(): Promise<void> {
   preloadStarted = false;
   preloadPromise = null;
   await preloadAll();
 }
 
-// === АККАУНТЫ ===
+// ================================================================
+// АККАУНТЫ
+// ================================================================
 export const users = {
   async getCurrent(): Promise<User | null> {
-    // Сначала кэш
     const cached = userCache.read();
     if (cached !== null) {
-      // В фоне обновляем с сервера
       http<{ user: User | null }>('/auth/me')
         .then(({ user }) => {
           userCache.write(user);
@@ -102,13 +98,12 @@ export const users = {
         .catch(() => {});
       return cached;
     }
-
-    // Нет кэша — запрос
     try {
       const { user } = await http<{ user: User | null }>('/auth/me');
       userCache.write(user);
       return user;
     } catch {
+      userCache.write(null);
       return null;
     }
   },
@@ -138,14 +133,17 @@ export const users = {
   },
 };
 
-// === АНИМЕ (каталог) ===
-export async function loadCatalog(sort = 'popular', genre?: string): Promise<Anime[]> {
-  // 1) Сначала кэш
+// ================================================================
+// КАТАЛОГ
+// ================================================================
+export async function loadCatalog(
+  sort = 'popular',
+  genre?: string,
+): Promise<Anime[]> {
   if (!genre && sort === 'popular') {
     const cached = catalogCache.read();
     if (cached && cached.length > 0) {
-      // 2) В фоне обновляем
-      http<{ items: Anime[] }>(`/anime?sort=popular`)
+      http<{ items: Anime[] }>('/anime?sort=popular')
         .then(({ items }) => {
           if (items && items.length > 0) catalogCache.write(items);
         })
@@ -154,34 +152,28 @@ export async function loadCatalog(sort = 'popular', genre?: string): Promise<Ani
     }
   }
 
-  // Нет кэша или другой запрос — синхронно
   const params = new URLSearchParams({ sort });
   if (genre && genre !== 'all') params.set('genre', genre);
   const { items } = await http<{ items: Anime[] }>(`/anime?${params}`);
   if (!genre && sort === 'popular') catalogCache.write(items);
-  return items;
+  return items || [];
 }
 
 export async function getAnimeById(id: number): Promise<Anime | null> {
-  // 1) Кэш
   const cached = animeDetailCache.read(id);
   if (cached) {
-    // 2) В фоне обновляем
     http<{ anime: Anime }>(`/anime/${id}`)
       .then(({ anime }) => {
-        if (anime) {
-          animeDetailCache.write(anime);
-        }
+        if (anime) animeDetailCache.write(id, anime);
       })
       .catch(() => {});
     return cached;
   }
 
-  // Нет кэша
   try {
     const { anime } = await http<{ anime: Anime }>(`/anime/${id}`);
-    if (anime) animeDetailCache.write(anime);
-    return anime;
+    if (anime) animeDetailCache.write(id, anime);
+    return anime ?? null;
   } catch {
     return null;
   }
@@ -199,7 +191,9 @@ export async function searchAnime(query: string): Promise<Anime[]> {
   );
 }
 
-// === ЗАГРУЗКА АНИМЕ / СЕЗОНА / СЕРИИ ===
+// ================================================================
+// СОЗДАНИЕ АНИМЕ / СЕЗОНА / СЕРИИ
+// ================================================================
 export interface CreateAnimeOptions {
   title: string;
   description?: string;
@@ -216,11 +210,9 @@ export async function createAnime(opts: CreateAnimeOptions): Promise<number> {
       description: opts.description || '',
       year: opts.year || new Date().getFullYear(),
       ageRating: opts.ageRating || '12+',
-      genres: opts.genres || ''
+      genres: opts.genres || '',
     }),
   });
-
-  // Инвалидируем кэш каталога
   catalogCache.write([]);
   return animeId;
 }
@@ -232,13 +224,16 @@ export interface CreateSeasonOptions {
 }
 
 export async function createSeason(opts: CreateSeasonOptions): Promise<number> {
-  const { seasonId } = await http<{ seasonId: number }>(`/anime/${opts.animeId}/seasons`, {
-    method: 'POST',
-    body: JSON.stringify({
-      seasonNumber: opts.seasonNumber,
-      description: opts.description || ''
-    }),
-  });
+  const { seasonId } = await http<{ seasonId: number }>(
+    `/anime/${opts.animeId}/seasons`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        seasonNumber: opts.seasonNumber,
+        description: opts.description || '',
+      }),
+    },
+  );
   return seasonId;
 }
 
@@ -251,68 +246,77 @@ export interface UploadEpisodeOptions {
   onProgress?: (pct: number) => void;
 }
 
-export async function uploadEpisode(opts: UploadEpisodeOptions): Promise<number> {
-  // Создаем эпизод без видео
-  const { episodeId } = await http<{ episodeId: number }>(`/seasons/${opts.seasonId}/episodes`, {
-    method: 'POST',
-    body: JSON.stringify({
-      episodeNumber: opts.episodeNumber,
-      title: opts.title || `Эпизод ${opts.episodeNumber}`
-    }),
-  });
+export async function uploadEpisode(
+  opts: UploadEpisodeOptions,
+): Promise<number> {
+  const { episodeId } = await http<{ episodeId: number }>(
+    `/seasons/${opts.seasonId}/episodes`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        episodeNumber: opts.episodeNumber,
+        title: opts.title || `Эпизод ${opts.episodeNumber}`,
+      }),
+    },
+  );
 
-  // Загружаем видео для эпизода
   if (opts.video) {
     await uploadVideo({
       episodeId,
       video: opts.video,
-      onProgress: opts.onProgress
+      onProgress: opts.onProgress,
     });
   }
 
-  // Загружаем постер для эпизода (если есть)
   if (opts.poster) {
-    // Для простоты используем ту же функцию что и для сезона (постер эпизода хранится в той же таблице)
     await uploadSeasonPoster(opts.seasonId, opts.poster);
   }
 
   return episodeId;
 }
 
-// === СЕРИИ СЕЗОНА (с кэшем) ===
-export async function getSeasonEpisodes(seasonId: number): Promise<Episode[]> {
+// ================================================================
+// СЕРИИ СЕЗОНА
+// ================================================================
+export async function getSeasonEpisodes(
+  seasonId: number,
+): Promise<Episode[]> {
   const cached = episodesCache.read(seasonId);
   if (cached && cached.length > 0) {
     http<{ episodes: Episode[] }>(`/seasons/${seasonId}/episodes`)
       .then(({ episodes }) => {
-        if (episodes && episodes.length > 0) episodesCache.write(seasonId, episodes);
+        if (episodes && episodes.length > 0)
+          episodesCache.write(seasonId, episodes);
       })
       .catch(() => {});
     return cached as Episode[];
   }
 
-  const { episodes } = await http<{ episodes: Episode[] }>(`/seasons/${seasonId}/episodes`);
+  const { episodes } = await http<{ episodes: Episode[] }>(
+    `/seasons/${seasonId}/episodes`,
+  );
   if (episodes && episodes.length > 0) episodesCache.write(seasonId, episodes);
-  return episodes;
+  return episodes || [];
 }
 
-// === ПРЕДЗАГРУЗКА КОММЕНТАРИЕВ И СТАТОВ ДЛЯ ВСЕХ АНИМЕ ===
-// При первом заходе — загружаем ВСЕ комментарии ко всем аниме
-// Это занимает ~1-2 сек для каталога в 50 аниме
+// ================================================================
+// ПРЕДЗАГРУЗКА СТАТИСТИКИ
+// ================================================================
 export async function preloadAllStats(animeIds: number[]): Promise<void> {
-  // Параллельно загружаем статы и комментарии (лимит — 6 одновременно)
   const BATCH = 6;
   for (let i = 0; i < animeIds.length; i += BATCH) {
     const batch = animeIds.slice(i, i + BATCH);
     await Promise.allSettled(
       batch.map(async (id) => {
-        // Загружаем только если кэш не свежий
         if (statsCache.isFresh(id)) return;
-
         try {
           const [votesRes, ratingRes, commentsRes] = await Promise.all([
-            http<{ likes: number; dislikes: number; userVote: number }>(`/anime/${id}/votes`),
-            http<{ average: number; count: number; userScore: number | null }>(`/anime/${id}/rating`),
+            http<{ likes: number; dislikes: number; userVote: number }>(
+              `/anime/${id}/votes`,
+            ),
+            http<{ average: number; count: number; userScore: number | null }>(
+              `/anime/${id}/rating`,
+            ),
             http<{ comments: Comment[] }>(`/anime/${id}/comments`),
           ]);
 
@@ -330,17 +334,19 @@ export async function preloadAllStats(animeIds: number[]): Promise<void> {
   }
 }
 
-// === ЛАЙКИ / ДИЗЛАЙКИ ===
+// ================================================================
+// ЛАЙКИ / ДИЗЛАЙКИ
+// ================================================================
 export async function voteAnime(animeId: number, vote: 1 | -1 | 0) {
-  const result = await http<{ likes: number; dislikes: number; userVote: number }>(
-    `/anime/${animeId}/vote`,
-    {
-      method: 'POST',
-      body: JSON.stringify({ vote }),
-    },
-  );
+  const result = await http<{
+    likes: number;
+    dislikes: number;
+    userVote: number;
+  }>(`/anime/${animeId}/vote`, {
+    method: 'POST',
+    body: JSON.stringify({ vote }),
+  });
 
-  // Обновляем кэш
   const cached = statsCache.read(animeId);
   if (cached) {
     statsCache.write(animeId, {
@@ -353,15 +359,18 @@ export async function voteAnime(animeId: number, vote: 1 | -1 | 0) {
   return result;
 }
 
-// === РЕЙТИНГИ ===
+// ================================================================
+// РЕЙТИНГИ
+// ================================================================
 export async function rateAnime(animeId: number, score: number) {
-  const result = await http<{ average: number; count: number; userScore: number }>(
-    `/anime/${animeId}/rate`,
-    {
-      method: 'POST',
-      body: JSON.stringify({ score }),
-    },
-  );
+  const result = await http<{
+    average: number;
+    count: number;
+    userScore: number;
+  }>(`/anime/${animeId}/rate`, {
+    method: 'POST',
+    body: JSON.stringify({ score }),
+  });
 
   const cached = statsCache.read(animeId);
   if (cached) {
@@ -371,10 +380,11 @@ export async function rateAnime(animeId: number, score: number) {
 }
 
 export async function getAnimeRating(animeId: number) {
-  // Сначала кэш
   const cached = statsCache.read(animeId);
   if (cached) {
-    http<{ average: number; count: number; userScore: number | null }>(`/anime/${animeId}/rating`)
+    http<{ average: number; count: number; userScore: number | null }>(
+      `/anime/${animeId}/rating`,
+    )
       .then((fresh) => {
         statsCache.write(animeId, { ...cached, rating: fresh });
       })
@@ -382,17 +392,20 @@ export async function getAnimeRating(animeId: number) {
     return cached.rating;
   }
 
-  const fresh = await http<{ average: number; count: number; userScore: number | null }>(
-    `/anime/${animeId}/rating`,
-  );
+  const fresh = await http<{
+    average: number;
+    count: number;
+    userScore: number | null;
+  }>(`/anime/${animeId}/rating`);
   return fresh;
 }
 
-// === КОММЕНТАРИИ (с кэшем) ===
+// ================================================================
+// КОММЕНТАРИИ
+// ================================================================
 export async function getComments(animeId: number): Promise<Comment[]> {
   const cached = commentsCache.read(animeId);
   if (cached && cached.length > 0) {
-    // В фоне обновляем
     http<{ comments: Comment[] }>(`/anime/${animeId}/comments`)
       .then(({ comments }) => {
         if (comments) commentsCache.write(animeId, comments);
@@ -401,89 +414,78 @@ export async function getComments(animeId: number): Promise<Comment[]> {
     return cached;
   }
 
-  const { comments } = await http<{ comments: Comment[] }>(`/anime/${animeId}/comments`);
+  const { comments } = await http<{ comments: Comment[] }>(
+    `/anime/${animeId}/comments`,
+  );
   if (comments) commentsCache.write(animeId, comments);
-  return comments;
+  return comments || [];
 }
 
-export async function addComment(animeId: number, text: string, episodeId?: number): Promise<Comment> {
-  const { comment } = await http<{ comment: Comment }>(`/anime/${animeId}/comments`, {
-    method: 'POST',
-    body: JSON.stringify({ text, episodeId }),
-  });
+export async function addComment(
+  animeId: number,
+  text: string,
+  episodeId?: number,
+): Promise<Comment> {
+  const { comment } = await http<{ comment: Comment }>(
+    `/anime/${animeId}/comments`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ text, episodeId }),
+    },
+  );
 
-  // Добавляем в кэш
   const cached = commentsCache.read(animeId) || [];
   commentsCache.write(animeId, [comment, ...cached]);
   return comment;
 }
 
 export async function toggleCommentLike(commentId: number) {
-  const result = await http<{ likes: number; liked: boolean }>(`/comments/${commentId}/like`, {
-    method: 'POST',
-  });
-
-  // Обновляем все кэши комментариев — ищем по id
-  const keys = Object.keys(localStorage);
-  keys.forEach((k) => {
-    if (k.includes('comments_')) {
-      try {
-        const raw = localStorage.getItem(k);
-        if (!raw) return;
-        const entry = JSON.parse(raw);
-        if (Array.isArray(entry.data)) {
-          entry.data = entry.data.map((c: any) =>
-            c.id === commentId ? { ...c, likes: result.likes, likedByMe: result.liked } : c,
-          );
-          localStorage.setItem(k, JSON.stringify(entry));
-        }
-      } catch {}
-    }
-  });
-
-  // Уведомляем компоненты
+  const result = await http<{ likes: number; liked: boolean }>(
+    `/comments/${commentId}/like`,
+    { method: 'POST' },
+  );
   window.dispatchEvent(new Event('corpmult_comments_change'));
   return result;
 }
 
 export async function deleteComment(commentId: number) {
   await http(`/comments/${commentId}`, { method: 'DELETE' });
-
-  // Удаляем из всех кэшей
-  const keys = Object.keys(localStorage);
-  keys.forEach((k) => {
-    if (k.includes('comments_')) {
-      try {
-        const raw = localStorage.getItem(k);
-        if (!raw) return;
-        const entry = JSON.parse(raw);
-        if (Array.isArray(entry.data)) {
-          entry.data = entry.data.filter((c: any) => c.id !== commentId);
-          localStorage.setItem(k, JSON.stringify(entry));
-        }
-      } catch {}
-    }
-  });
-
   window.dispatchEvent(new Event('corpmult_comments_change'));
 }
 
-// === ПРОСМОТРЫ ===
-export async function recordView(episodeId: number, watchedSeconds: number): Promise<number> {
+// ================================================================
+// ПРОСМОТРЫ
+// ================================================================
+export async function recordView(
+  episodeId: number,
+  watchedSeconds: number,
+): Promise<number> {
   try {
-    const { views } = await http<{ views: number; counted: boolean }>(`/episodes/${episodeId}/view`, {
-      method: 'POST',
-      body: JSON.stringify({ watchedSeconds }),
-    });
+    const { views } = await http<{ views: number; counted: boolean }>(
+      `/episodes/${episodeId}/view`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ watchedSeconds }),
+      },
+    );
     return views;
   } catch {
     return 0;
   }
 }
 
-// === ИЗБРАННОЕ (с кэшем) ===
+// ================================================================
+// ИЗБРАННОЕ
+// ================================================================
 export async function getFavorites(): Promise<
-  { id: number; title: string; poster: string; year: number; likesCount: number; rating: number }[]
+  {
+    id: number;
+    title: string;
+    poster: string;
+    year: number;
+    likesCount: number;
+    rating: number;
+  }[]
 > {
   const cached = favoritesCache.read();
   if (cached !== null) {
@@ -493,7 +495,6 @@ export async function getFavorites(): Promise<
       })
       .catch(() => {});
 
-    // Возвращаем ��етальную инфу из кэша каталога
     const catalog = catalogCache.read() || [];
     return cached
       .map((id) => catalog.find((c) => c.id === id))
@@ -502,24 +503,30 @@ export async function getFavorites(): Promise<
         id: c.id,
         title: c.title,
         year: c.year,
-        likesCount: c.likesCount,
-        rating: c.rating,
+        likesCount: c.likesCount ?? 0,
+        rating: c.rating ?? 0,
+        poster: `/api/files/anime/${c.id}/poster`,
       }));
   }
 
   try {
     const { items } = await http<{ items: any[] }>('/favorites');
     favoritesCache.write(items.map((i: any) => i.id));
-    return items;
+    return items.map((i: any) => ({
+      ...i,
+      poster: `/api/files/anime/${i.id}/poster`,
+    }));
   } catch {
     return [];
   }
 }
 
 export async function toggleFavorite(animeId: number): Promise<boolean> {
-  const { favorite } = await http<{ favorite: boolean }>(`/favorites/${animeId}`, { method: 'POST' });
+  const { favorite } = await http<{ favorite: boolean }>(
+    `/favorites/${animeId}`,
+    { method: 'POST' },
+  );
 
-  // Обновляем кэш
   const cached = favoritesCache.read() || [];
   const idx = cached.indexOf(animeId);
   if (favorite && idx === -1) cached.push(animeId);
@@ -530,7 +537,9 @@ export async function toggleFavorite(animeId: number): Promise<boolean> {
   return favorite;
 }
 
-// === ИСТОРИЯ ===
+// ================================================================
+// ИСТОРИЯ
+// ================================================================
 export async function getHistory() {
   try {
     return (await http<{ history: any[] }>('/history')).history;
@@ -545,7 +554,22 @@ export async function pushHistory(episodeId: number) {
   } catch {}
 }
 
-// === АДМИНКА ===
+// ================================================================
+// СМЕНА ПАРОЛЯ
+// ================================================================
+export async function changePassword(
+  oldPassword: string,
+  newPassword: string,
+) {
+  return http('/auth/change-password', {
+    method: 'POST',
+    body: JSON.stringify({ oldPassword, newPassword }),
+  });
+}
+
+// ================================================================
+// АДМИНКА
+// ================================================================
 export const admin = {
   async listUsers() {
     return (await http<{ users: any[] }>('/admin/users')).users;
@@ -570,78 +594,21 @@ export const admin = {
   },
 
   async deleteAnime(animeId: number) {
-    await fetch(`${API_BASE}/admin/anime/${animeId}`, { method: 'DELETE', credentials: 'include' });
+    await fetch(`${API_BASE}/admin/anime/${animeId}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    });
     catalogCache.write([]);
   },
 };
 
-export async function changePassword(oldPassword: string, newPassword: string) {
-  return http('/auth/change-password', {
-    method: 'POST',
-    body: JSON.stringify({ oldPassword, newPassword }),
-  });
-}
-
-export type Video = Anime;
-
-// Экспорт api для совместимости со старым кодом
-export const api = {
-  // Auth
-  me: users.getCurrent,
-  login: users.login,
-  register: users.register,
-  
-  // Anime
-  loadCatalog,
-  getAnimeById,
-  searchAnime,
-  createAnime,
-  
-  // Seasons & Episodes
-  createSeason,
-  uploadEpisode,
-  getSeasonEpisodes,
-  
-  // Comments
-  getComments,
-  addComment,
-  toggleCommentLike,
-  deleteComment,
-  
-  // Votes & Ratings
-  voteAnime,
-  rateAnime,
-  getAnimeRating,
-  
-  // Favorites
-  getFavorites,
-  toggleFavorite,
-  
-  // History
-  getHistory,
-  pushHistory,
-  
-  // Admin
-  admin,
-  
-  // Misc
-  recordView,
-  changePassword,
-  
-  // Preloading
-  preloadAll,
-  refreshAll,
-};
-
-
-// ================== FILE UPLOAD FUNCTIONS ==================
-
-// Функция для преобразования файла в base64
+// ================================================================
+// FILE UPLOAD
+// ================================================================
 export function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
-      // Убираем префикс "data:image/jpeg;base64," или аналогичный
       const base64String = (reader.result as string).split(',')[1];
       resolve(base64String);
     };
@@ -650,43 +617,39 @@ export function fileToBase64(file: File): Promise<string> {
   });
 }
 
-// Загрузка постера для аниме
-export async function uploadAnimePoster(animeId: number, file: File): Promise<void> {
+export async function uploadAnimePoster(
+  animeId: number,
+  file: File,
+): Promise<void> {
   const base64Data = await fileToBase64(file);
   await http(`/files/anime/${animeId}/poster`, {
     method: 'POST',
-    body: JSON.stringify({
-      data: base64Data,
-      mime: file.type
-    }),
+    body: JSON.stringify({ data: base64Data, mime: file.type }),
   });
 }
 
-// Загрузка баннера для аниме
-export async function uploadAnimeBanner(animeId: number, file: File): Promise<void> {
+export async function uploadAnimeBanner(
+  animeId: number,
+  file: File,
+): Promise<void> {
   const base64Data = await fileToBase64(file);
   await http(`/files/anime/${animeId}/banner`, {
     method: 'POST',
-    body: JSON.stringify({
-      data: base64Data,
-      mime: file.type
-    }),
+    body: JSON.stringify({ data: base64Data, mime: file.type }),
   });
 }
 
-// Загрузка постера для сезона
-export async function uploadSeasonPoster(seasonId: number, file: File): Promise<void> {
+export async function uploadSeasonPoster(
+  seasonId: number,
+  file: File,
+): Promise<void> {
   const base64Data = await fileToBase64(file);
   await http(`/files/season/${seasonId}/poster`, {
     method: 'POST',
-    body: JSON.stringify({
-      data: base64Data,
-      mime: file.type
-    }),
+    body: JSON.stringify({ data: base64Data, mime: file.type }),
   });
 }
 
-// Загрузка видео для эпизода
 export interface UploadVideoOptions {
   episodeId: number;
   video: File;
@@ -703,7 +666,50 @@ export async function uploadVideo(opts: UploadVideoOptions): Promise<void> {
       data: base64Data,
       mime: opts.video.type,
       durationSeconds: opts.durationSeconds || 0,
-      sizeBytes: opts.sizeBytes || opts.video.size
+      sizeBytes: opts.sizeBytes || opts.video.size,
     }),
   });
 }
+
+// ================================================================
+// ЭКСПОРТ (совместимость со старым кодом)
+// ================================================================
+export type Video = Anime;
+
+export const api = {
+  me: users.getCurrent,
+  login: users.login,
+  register: users.register,
+
+  loadCatalog,
+  getAnimeById,
+  searchAnime,
+  createAnime,
+
+  createSeason,
+  uploadEpisode,
+  getSeasonEpisodes,
+
+  getComments,
+  addComment,
+  toggleCommentLike,
+  deleteComment,
+
+  voteAnime,
+  rateAnime,
+  getAnimeRating,
+
+  getFavorites,
+  toggleFavorite,
+
+  getHistory,
+  pushHistory,
+
+  admin,
+
+  recordView,
+  changePassword,
+
+  preloadAll,
+  refreshAll,
+};
