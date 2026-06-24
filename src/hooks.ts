@@ -21,7 +21,14 @@ export function checkImageExists(url: string): Promise<boolean> {
   });
 }
 
-// Получение URL баннера с проверкой
+// Синхронная функция для получения URL баннера (для использования в рендере)
+export function bannerUrl(_animeId: number, banner?: string, poster?: string): string {
+  if (banner && banner.startsWith('/uploads/')) return banner;
+  if (poster && poster.startsWith('/uploads/')) return poster;
+  return FALLBACK_BANNER;
+}
+
+// Асинхронная функция для получения URL баннера с проверкой доступности
 export async function getBannerUrl(banner?: string, poster?: string): Promise<string> {
   if (banner && banner.startsWith('/uploads/')) {
     const exists = await checkImageExists(banner);
