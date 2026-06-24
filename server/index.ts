@@ -40,11 +40,20 @@ app.get('/api/health', (_req, res) => {
 
 // ============ STATIC FRONTEND (для Railway / прод) ============
 const distPath = path.join(__dirname, '..', 'dist');
+const publicPath = path.join(__dirname, '..', 'public');
+
+// Раздача папки public для изображений
+if (fs.existsSync(publicPath)) {
+  console.log('[static] Раздача public/ из', publicPath);
+  app.use('/public', express.static(publicPath));
+  app.use('/images', express.static(publicPath));
+}
+
 if (fs.existsSync(distPath)) {
   console.log('[static] Раздача dist/ из', distPath);
   app.use(express.static(distPath));
 
-  // SSR для OG метатегов
+  // SSR для OG метатегов и SPA fallback
   app.get('*', async (req, res, next) => {
     if (req.path.startsWith('/api/')) return next();
     try {
@@ -54,7 +63,7 @@ if (fs.existsSync(distPath)) {
       // Динамические OG-метатеги для ботов
       let ogTitle = 'AnimeWorld';
       let ogDescription = 'Смотри аниме онлайн бесплатно в хорошем качестве';
-      let ogImage = '/images/logov.png';
+      let ogImage = '/public/images/logov.png';
 
       const animeMatch = req.path.match(/\/(?:anime|id)(\d+)/) || req.path.match(/\/id(\d+)/);
       const epMatch = req.path.match(/\/watch\/(\d+)/);
@@ -93,7 +102,9 @@ if (fs.existsSync(distPath)) {
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
       res.send(html);
     } catch (err) {
-      next();
+      // Если не удалось прочитать index.html, вернем его напрямую
+      const indexPath = path.join(distPath, 'index.html');
+      res.sendFile(indexPath);
     }
   });
 } else {

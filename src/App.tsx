@@ -20,7 +20,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/season/:season" element={<SeasonPage />} />
-          <Route path="/id:animeId" element={<AnimePage />} />
+          <Route path="/id/:animeId" element={<AnimePage />} />
           <Route path="/anime/:id" element={<AnimePage />} />
           <Route path="/watch/:id" element={<WatchPage />} />
           <Route path="/auth" element={<AuthPage />} />
@@ -29,6 +29,7 @@ export default function App() {
           <Route path="/upload" element={<UploadPage />} />
           <Route path="/admin" element={<AdminPage />} />
           <Route path="/search" element={<SearchPage />} />
+          <Route path="*" element={<HomePage />} /> {/* Fallback route for SPA */}
         </Routes>
       </main>
 
