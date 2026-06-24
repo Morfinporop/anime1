@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth';
 import { useNotify } from '../notify';
@@ -42,6 +42,7 @@ export default function UploadPage() {
   const [audioTracks, setAudioTracks] = useState<{ label: string; file?: File }[]>([]);
 
   const [busy, setBusy] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   useEffect(() => {
     api.listAnime('newest').then(setAnimeList).catch(() => {});
@@ -482,7 +483,7 @@ export default function UploadPage() {
             <button onClick={handleCreateAndUpload} disabled={!canUploadSingle}
               className="flex-1 py-3 rounded-xl bg-black text-white font-semibold hover:bg-zinc-800 disabled:opacity-50 transition flex items-center justify-center gap-2">
               {busy ? (
-                <><div className="h-4 w-4 animate-spin-slow rounded-full border-2 border-white/30 border-t-white" />Загрузка...</>
+                <><div className="h-4 w-4 animate-spin-slow rounded-full border-2 border-white/30 border-t-white" />Загрузка {uploadProgress}%...</>
               ) : (
                 <>Загрузить аниме</>
               )}
@@ -494,7 +495,7 @@ export default function UploadPage() {
             <button onClick={submitEpisode} disabled={!canSubmitEpisode}
               className="flex-1 py-3 rounded-xl bg-black text-white font-semibold hover:bg-zinc-800 disabled:opacity-50 transition flex items-center justify-center gap-2">
               {busy ? (
-                <><div className="h-4 w-4 animate-spin-slow rounded-full border-2 border-white/30 border-t-white" />Загрузка...</>
+                <><div className="h-4 w-4 animate-spin-slow rounded-full border-2 border-white/30 border-t-white" />Загрузка {uploadProgress}%...</>
               ) : (
                 <>Опубликовать серию</>
               )}
@@ -506,7 +507,7 @@ export default function UploadPage() {
             <button onClick={handleCreateAndUpload} disabled={!canUpload}
               className="flex-1 py-3 rounded-xl bg-black text-white font-semibold hover:bg-zinc-800 disabled:opacity-50 transition flex items-center justify-center gap-2">
               {busy ? (
-                <><div className="h-4 w-4 animate-spin-slow rounded-full border-2 border-white/30 border-t-white" />Создание...</>
+                <><div className="h-4 w-4 animate-spin-slow rounded-full border-2 border-white/30 border-t-white" />Создание {uploadProgress}%...</>
               ) : (
                 <>Создать аниме</>
               )}
@@ -518,7 +519,7 @@ export default function UploadPage() {
             <button onClick={submitEpisode} disabled={!canSubmitEpisode}
               className="flex-1 py-3 rounded-xl bg-black text-white font-semibold hover:bg-zinc-800 disabled:opacity-50 transition flex items-center justify-center gap-2">
               {busy ? (
-                <><div className="h-4 w-4 animate-spin-slow rounded-full border-2 border-white/30 border-t-white" />Загрузка...</>
+                <><div className="h-4 w-4 animate-spin-slow rounded-full border-2 border-white/30 border-t-white" />Загрузка {uploadProgress}%...</>
               ) : (
                 <>Опубликовать серию</>
               )}

@@ -7,8 +7,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'animeworld-dev-secret-change-me-in
 const JWT_EXPIRES = '30d';
 
 const AVATAR_COLORS = [
-  '#ff85b8', '#7aa3ff', '#7affb3', '#ffd17a', '#c87aff',
-  '#ff7a7a', '#7ae5ff', '#b3ff7a', '#ffae7a', '#7affe5',
+  '#ec4899', // розовый - основной цвет
 ];
 
 export interface UserPayload {

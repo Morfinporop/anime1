@@ -6,6 +6,65 @@ import {
   requireAuth, requireAdmin, requireUploadPermission,
   type UserPayload,
 } from './auth.js';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+import { spawn } from 'child_process';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Директория для временных файлов
+const uploadDir = path.join(__dirname, '..', 'uploads');
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+// Функция сжатия видео через FFmpeg
+async function compressVideo(inputPath: string, outputPath: string, maxSizeMB: number = 500): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const args = [
+      '-i', inputPath,
+      '-c:v', 'libx264',
+      '-preset', 'medium',
+      '-crf', '28',
+      '-c:a', 'aac',
+      '-b:a', '128k',
+      '-movflags', '+faststart',
+      '-fs', `${maxSizeMB * 1024 * 1024}`,
+      '-y',
+      outputPath
+    ];
+    
+    const ffmpeg = spawn('ffmpeg', args);
+    let stderr = '';
+    
+    ffmpeg.stderr.on('data', (data) => { stderr += data.toString(); });
+    
+    ffmpeg.on('close', (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        console.error('[ffmpeg] error:', stderr);
+        reject(new Error(`FFmpeg failed with code ${code}`));
+      }
+    });
+    
+    ffmpeg.on('error', (err) => {
+      console.error('[ffmpeg] spawn error:', err);
+      reject(err);
+    });
+  });
+}
+
+// Утилита для очистки временных файлов
+function cleanupTempFiles(files: string[]) {
+  files.forEach(f => {
+    try {
+      if (fs.existsSync(f)) fs.unlinkSync(f);
+    } catch {}
+  });
+}
 
 export const router = Router();
 
@@ -624,6 +683,122 @@ router.get('/admin/anime', requireAdmin, async (req, res) => {
     );
     res.json(r.rows);
   } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ================== UPLOAD (новый endpoint с сжатием на сервере) ==================
+// Принимает base64 видео, сжимает через FFmpeg, сохраняет
+router.post('/upload/video', requireUploadPermission, async (req, res) => {
+  const tempFiles: string[] = [];
+  
+  try {
+    const { video_data, video_mime = 'video/mp4', title, description, year, age_rating, genres, type, season_id, episode_number } = req.body || {};
+    
+    if (!video_data) return res.status(400).json({ error: 'Видео не указано' });
+    
+    // Декодируем base64 во временный файл
+    const buffer = Buffer.from(video_data, 'base64');
+    const tempPath = path.join(uploadDir, `temp-${Date.now()}-${Math.random().toString(36).slice(2)}.mp4`);
+    fs.writeFileSync(tempPath, buffer);
+    tempFiles.push(tempPath);
+    
+    const maxSizeMB = 500;
+    const compressedPath = path.join(uploadDir, `compressed-${Date.now()}-${Math.random().toString(36).slice(2)}.mp4`);
+    tempFiles.push(compressedPath);
+    
+    // Сжимаем видео через FFmpeg
+    await compressVideo(tempPath, compressedPath, maxSizeMB);
+    
+    // Читаем сжатое видео
+    const compressedData = fs.readFileSync(compressedPath);
+    const compressedBase64 = compressedData.toString('base64');
+    const compressedSize = compressedData.length;
+    
+    // Создаём anime если нужно
+    let animeId: number | undefined;
+    
+    if (title) {
+      const poster_data = req.body.poster_data || '';
+      const poster_mime = req.body.poster_mime || 'image/jpeg';
+      
+      const r = await query(
+        `INSERT INTO anime (title, description, poster_data, poster_mime, banner_data, banner_mime, genres, year, age_rating, type, voiceovers, subtitles, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+         RETURNING id`,
+        [title, description || '', poster_data || null, poster_mime || null, poster_data || null, poster_mime || null, genres || [], year || new Date().getFullYear(), age_rating || '12+', type || 'single', [], [], req.user!.id]
+      );
+      animeId = r.rows[0].id;
+      
+      // Создаём сезон
+      await query(
+        `INSERT INTO seasons (anime_id, season_number, description) VALUES ($1, 1, $2)`,
+        [animeId, description || 'Одиночное аниме']
+      );
+    }
+    
+    // Определяем season_id
+    let sid = season_id ? parseInt(season_id) : null;
+    let epNum = episode_number ? parseInt(episode_number) : 1;
+    
+    if (!sid && animeId) {
+      const sr = await query('SELECT id FROM seasons WHERE anime_id = $1 ORDER BY season_number ASC LIMIT 1', [animeId]);
+      if (sr.rows[0]) sid = sr.rows[0].id;
+    }
+    
+    if (!sid) {
+      cleanupTempFiles(tempFiles);
+      return res.status(400).json({ error: 'Не указан season_id' });
+    }
+    
+    // Получаем anime_id из season
+    const sr = await query('SELECT anime_id FROM seasons WHERE id = $1', [sid]);
+    if (sr.rows.length === 0) {
+      cleanupTempFiles(tempFiles);
+      return res.status(400).json({ error: 'Сезон не найден' });
+    }
+    animeId = sr.rows[0].anime_id;
+    
+    const audioTracks = req.body.audio_tracks ? JSON.parse(req.body.audio_tracks) : [];
+    const qualitySources = req.body.quality_sources ? JSON.parse(req.body.quality_sources) : {};
+    
+    const r = await query(
+      `INSERT INTO episodes (season_id, anime_id, episode_number, title, description, video_data, video_mime, duration_seconds, size_bytes, voiceovers, subtitles, audio_tracks, quality_sources)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
+      [sid, animeId, epNum, title || '', '', `data:${video_mime};base64,${compressedBase64}`, video_mime, 0, compressedSize, [], [], JSON.stringify(audioTracks), JSON.stringify(qualitySources)]
+    );
+    
+    // Обновляем episodes_count
+    await query(
+      `UPDATE seasons SET episodes_count = (SELECT COUNT(*) FROM episodes WHERE season_id = $1) WHERE id = $1`,
+      [sid]
+    );
+    
+    cleanupTempFiles(tempFiles);
+    res.json({ ok: true, episode_id: r.rows[0].id, anime_id: animeId });
+  } catch (err: any) {
+    cleanupTempFiles(tempFiles);
+    console.error('[upload.video]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Endpoint для загрузки баннера
+router.post('/upload/banner', requireUploadPermission, async (req, res) => {
+  try {
+    const { banner_data, banner_mime = 'image/jpeg', anime_id } = req.body || {};
+    
+    if (!banner_data) return res.status(400).json({ error: 'Баннер не загружен' });
+    if (!anime_id) return res.status(400).json({ error: 'Не указан anime_id' });
+    
+    await query(
+      `UPDATE anime SET banner_data = $1, banner_mime = $2 WHERE id = $3`,
+      [banner_data, banner_mime, parseInt(anime_id)]
+    );
+    
+    res.json({ ok: true });
+  } catch (err: any) {
+    console.error('[upload.banner]', err.message);
     res.status(500).json({ error: err.message });
   }
 });

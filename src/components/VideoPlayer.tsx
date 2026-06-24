@@ -24,12 +24,14 @@ export function VideoPlayer({ episode }: VideoPlayerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const hideTimerRef = useRef<number | null>(null);
+  const progressRef = useRef<HTMLDivElement>(null);
 
   const availableQualities: string[] = Object.keys(episode.quality_sources || {}).length > 0
     ? Object.keys(episode.quality_sources!)
     : ['720p'];
 
   const [playing, setPlaying] = useState(false);
+  const [buffered, setBuffered] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);
@@ -67,6 +69,14 @@ export function VideoPlayer({ episode }: VideoPlayerProps) {
     if (!v) return;
     if (v.paused) v.play();
     else v.pause();
+  };
+
+  const onProgress = () => {
+    const v = videoRef.current;
+    if (!v || !v.buffered.length) return;
+    const bufferedEnd = v.buffered.end(v.buffered.length - 1);
+    const duration = v.duration || 1;
+    setBuffered((bufferedEnd / duration) * 100);
   };
 
   const seek = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -144,6 +154,7 @@ export function VideoPlayer({ episode }: VideoPlayerProps) {
         onWaiting={() => setBuffering(true)}
         onPlaying={() => setBuffering(false)}
         onCanPlay={() => setBuffering(false)}
+        onProgress={onProgress}
       />
 
       <div className="absolute inset-x-0 bottom-0 h-20 sm:h-24 bg-gradient-to-t from-black/70 to-transparent pointer-events-none" />
@@ -172,11 +183,16 @@ export function VideoPlayer({ episode }: VideoPlayerProps) {
       >
         {/* Timeline */}
         <div
-          className="relative h-1 bg-white/25 rounded-full cursor-pointer mb-2 sm:mb-3 group/timeline hover:h-1.5 transition-all"
+          ref={progressRef}
+          className="relative h-1.5 sm:h-2 bg-white/20 rounded-full cursor-pointer mb-3 sm:mb-4 group/timeline hover:h-2.5 sm:hover:h-3 transition-all"
           onClick={seek}
         >
+          {/* Buffered */}
+          <div className="absolute inset-y-0 left-0 bg-white/30 rounded-full" style={{ width: `${buffered}%` }} />
+          {/* Progress */}
           <div className="absolute inset-y-0 left-0 bg-[#ff0033] rounded-full" style={{ width: `${progress}%` }} />
-          <div className="absolute top-1/2 -translate-y-1/2 w-3 h-3 sm:w-3.5 sm:h-3.5 bg-[#ff0033] rounded-full opacity-0 group-hover/timeline:opacity-100 transition-opacity"
+          {/* Handle */}
+          <div className="absolute top-1/2 -translate-y-1/2 w-3 h-3 sm:w-4 sm:h-4 bg-[#ff0033] rounded-full opacity-0 group-hover/timeline:opacity-100 transition-opacity shadow-lg"
             style={{ left: `calc(${progress}% - 6px)` }} />
         </div>
 

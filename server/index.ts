@@ -23,9 +23,9 @@ app.use(cors({
   credentials: true,
 }));
 
-// Увеличенный лимит для загрузки видео (base64) — до 600 МБ
-app.use(express.json({ limit: '600mb' }));
-app.use(express.urlencoded({ extended: true, limit: '600mb' }));
+// Увеличенный лимит для загрузки файлов — до 600 MB (буфер + запас)
+app.use(express.json({ limit: '620mb' }));
+app.use(express.urlencoded({ extended: true, limit: '620mb' }));
 app.use(cookieParser());
 app.use(authMiddleware);
 

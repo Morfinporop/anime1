@@ -51,7 +51,7 @@ export function Header() {
 
   return (
     <>
-      <header className="sticky top-0 z-40 bg-white/85 backdrop-blur-xl border-b border-zinc-200">
+      <header className="sticky top-0 z-40 bg-white border-b border-zinc-200">
         <div className="max-w-[1400px] mx-auto px-3 sm:px-6 h-14 flex items-center gap-2 sm:gap-4">
           <Link to="/" className="flex items-center gap-2 shrink-0">
             <img src="/images/logov.png" alt="AnimeWorld" className="w-8 h-8 rounded-lg shadow-sm"
@@ -90,7 +90,11 @@ export function Header() {
 
           {/* Десктоп */}
           <div className="hidden md:flex items-center gap-2 shrink-0">
-            {canUpload && (
+            {user && (user.is_admin || user.isAdmin) ? (
+              <Link to="/admin" className="flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-yellow-500 text-black text-sm font-medium hover:bg-yellow-400 transition">
+                <UploadIcon className="w-4 h-4" /> Админ меню
+              </Link>
+            ) : canUpload && (
               <Link to="/upload" className="flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-black text-white text-sm font-medium hover:bg-zinc-800 transition">
                 <UploadIcon className="w-4 h-4" /> Загрузить
               </Link>
@@ -114,14 +118,13 @@ export function Header() {
                     <Link to={`/user/${user.id}`} onClick={() => setProfileOpen(false)} className="flex items-center gap-2.5 px-4 py-3 hover:bg-zinc-50 text-sm">
                       <UserIcon className="w-4 h-4 text-zinc-500" /> Мой профиль
                     </Link>
-                    {canUpload && (
-                      <Link to="/upload" onClick={() => setProfileOpen(false)} className="flex items-center gap-2.5 px-4 py-3 hover:bg-zinc-50 text-sm border-t border-zinc-100">
-                        <UploadIcon className="w-4 h-4 text-zinc-500" /> Загрузить аниме
-                      </Link>
-                    )}
-                    {user.is_admin && (
+                    {user.is_admin ? (
                       <Link to="/admin" onClick={() => setProfileOpen(false)} className="flex items-center gap-2.5 px-4 py-3 hover:bg-zinc-50 text-sm border-t border-zinc-100">
                         <UploadIcon className="w-4 h-4 text-zinc-500" /> Админ меню
+                      </Link>
+                    ) : canUpload && (
+                      <Link to="/upload" onClick={() => setProfileOpen(false)} className="flex items-center gap-2.5 px-4 py-3 hover:bg-zinc-50 text-sm border-t border-zinc-100">
+                        <UploadIcon className="w-4 h-4 text-zinc-500" /> Загрузить аниме
                       </Link>
                     )}
                     <button onClick={() => { logout(); setProfileOpen(false); navigate('/'); }}

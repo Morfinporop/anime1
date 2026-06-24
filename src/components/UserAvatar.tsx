@@ -42,11 +42,11 @@ function pickBg(color?: string): string {
 export function UserAvatar({ user, size = 'sm', showLink = false, variant = 'filled', className = '' }: UserAvatarProps) {
   const bg = pickBg(user.avatar_color);
   const filledStyles = {
-    color: '#000000',  // черная буква
+    color: '#ffffff',  // белая буква
     backgroundColor: bg,
   };
   const minimalStyles = {
-    color: '#000000',  // черная буква
+    color: '#ffffff',  // белая буква
     backgroundColor: bg,
   };
 

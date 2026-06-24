@@ -9,8 +9,8 @@ import { bannerUrl, FALLBACK_BANNER } from '../hooks';
 const PAGE_SIZE = 24;
 type View = 'grid' | 'list';
 
-// Уменьшенный hero без большого затемнения — текст прямо на светлой картинке
-const HERO_BG = 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSXUgdrfGB0cEVNygm2BZRO2972CZA1Fcc1jBoKIV6Suw&s=10';
+// Hero banner - будет динамически загружаться из первого аниме
+const HERO_BG = null;
 
 export default function HomePage() {
   const [items, setItems] = useState<Anime[]>([]);
@@ -20,6 +20,10 @@ export default function HomePage() {
   const [genre, setGenre] = useState<string>('all');
   const [view, setView] = useState<View>('grid');
   const sentinelRef = useRef<HTMLDivElement>(null);
+
+  // Hero banner - берём из первого популярного аниме
+  const heroAnime = items[0];
+  const heroBanner = heroAnime ? bannerUrl(heroAnime.id) : FALLBACK_BANNER;
 
   useEffect(() => {
     setLoading(true);
@@ -52,28 +56,26 @@ export default function HomePage() {
 
   return (
     <div className="animate-fade-in">
-      {/* HERO — светлая картинка с тонким затемнением, текст на ней */}
+      {/* HERO — динамический баннер из первого аниме */}
       <section className="relative overflow-hidden border-b border-zinc-200">
         <div className="absolute inset-0">
           <img
-            src={HERO_BG}
+            src={heroBanner}
             alt=""
             className="h-full w-full object-cover"
+            onError={(e) => { (e.target as HTMLImageElement).src = FALLBACK_BANNER; }}
           />
-          <div
-            className="absolute inset-0"
-            style={{ background: 'linear-gradient(180deg, rgba(255,245,250,0.4) 0%, rgba(255,245,250,0.6) 50%, rgba(255,245,250,0.95) 100%)' }}
-          />
+          <div className="absolute inset-0 bg-gradient-to-t from-white via-white/60 to-transparent" />
         </div>
 
         <div className="relative mx-auto max-w-[1400px] px-4 sm:px-6 lg:px-8 pt-6 pb-6 sm:pt-10 sm:pb-8">
           <div className="max-w-3xl animate-slide-up">
             <h1 className="text-display text-4xl sm:text-5xl lg:text-6xl leading-[1]">
-              <span className="text-pink-300">Аниме.</span>
+              <span className="text-white drop-shadow-lg">Аниме.</span>
               <br />
-              <span className="text-zinc-900">Одно место.</span>
+              <span className="text-white drop-shadow-lg">Одно место.</span>
             </h1>
-            <p className="mt-3 max-w-lg text-sm leading-relaxed text-zinc-400 sm:text-base">
+            <p className="mt-3 max-w-lg text-sm leading-relaxed text-white/80 drop-shadow sm:text-base">
               Сотни тайтлов в высоком качестве с разными озвучками и продвинутым плеером.
             </p>
           </div>

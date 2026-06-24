@@ -302,18 +302,18 @@ export default function AnimePage() {
         <div className="mt-5 sm:mt-6 bg-white rounded-xl sm:rounded-2xl border border-zinc-200 p-4 sm:p-5">
           <h3 className="font-semibold text-zinc-900 mb-4 text-sm sm:text-base">Комментарии · {comments.length}</h3>
           {user ? (
-            <form onSubmit={(e) => { e.preventDefault(); submitComment(); }} className="flex gap-2 mb-4">
-              <Link to={`/user/${user.id}`} className="w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-white font-bold text-xs shrink-0"
+            <form onSubmit={(e) => { e.preventDefault(); submitComment(); }} className="flex gap-3 mb-4 items-start">
+              <Link to={`/user/${user.id}`} className="w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0"
                 style={{ backgroundColor: user.avatar_color }}>
                 {user.username[0]?.toUpperCase()}
               </Link>
               <div className="flex-1 relative">
                 <textarea value={newComment} onChange={(e) => setNewComment(e.target.value)}
                   placeholder="Оставьте комментарий..." rows={2}
-                  className="w-full px-3 py-2 pr-11 sm:pr-12 rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:border-zinc-400 focus:outline-none text-sm resize-none transition" />
+                  className="w-full px-4 py-3 pr-14 rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:border-zinc-400 focus:outline-none text-sm resize-none transition" />
                 <button type="submit" disabled={!newComment.trim()}
-                  className="absolute right-2 bottom-2 p-1.5 sm:p-2 rounded-lg bg-black text-white hover:bg-zinc-800 disabled:opacity-40 transition">
-                  <SendIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  className="absolute right-2.5 bottom-2.5 p-2 rounded-lg bg-black text-white hover:bg-zinc-800 disabled:opacity-40 transition">
+                  <SendIcon className="w-4 h-4" />
                 </button>
               </div>
             </form>
