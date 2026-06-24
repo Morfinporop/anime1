@@ -126,6 +126,8 @@ export default function AnimePage() {
     setRating(await api.getRating(anime.id));
   };
 
+  const isSingle = anime.type === 'single';
+
   return (
     <div className="animate-fade-in">
       {/* Hero */}
@@ -158,8 +160,8 @@ export default function AnimePage() {
               )}
               <span className="px-2 sm:px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-700 font-medium">{anime.year}</span>
               <span className="px-2 sm:px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-700 font-medium">{anime.age_rating}</span>
-              {anime.type === 'single' && <span className="px-2 sm:px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-700 font-medium">Одиночное</span>}
-              {anime.type === 'season' && <span className="px-2 sm:px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-700 font-medium">Сезонное</span>}
+              {isSingle && <span className="px-2 sm:px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-700 font-medium">Одиночное</span>}
+              {!isSingle && <span className="px-2 sm:px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-700 font-medium">Сезонное</span>}
               {anime.genres.slice(0, window.innerWidth < 640 ? 2 : anime.genres.length).map((g: string) => (
                 <span key={g} className="px-2 sm:px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-700 font-medium">{g}</span>
               ))}
@@ -193,20 +195,33 @@ export default function AnimePage() {
                 <ShareIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                 <span className="hidden xs:inline">{copied ? 'Скопировано' : 'Поделиться'}</span>
               </button>
-              {anime.created_by && (
-                <Link to={`/user/${anime.created_by}`} className="text-[11px] sm:text-xs text-zinc-500 hover:text-zinc-900 ml-auto">
-                  <span className="hidden sm:inline">Автор: </span>
-                  <span className="font-semibold hover:underline">{authorName || `user #${anime.created_by}`}</span>
-                </Link>
-              )}
             </div>
           </div>
         </div>
       </div>
 
       <div className="mx-auto max-w-[1400px] px-4 sm:px-6 lg:px-8 py-6 sm:py-8 md:py-12">
-        {/* Сезоны */}
-        {seasons.length > 1 && (
+        {/* Для одиночного аниме — показываем видеоплеер сразу */}
+        {isSingle && episodes.length > 0 && (
+          <div className="bg-white rounded-xl sm:rounded-2xl border border-zinc-200 overflow-hidden p-4 sm:p-6 mb-6">
+            <VideoPlayer episode={episodes[0]} />
+          </div>
+        )}
+
+        {/* Информация об авторе для одиночного - ниже видео */}
+        {isSingle && anime.created_by && (
+          <div className="bg-white rounded-xl sm:rounded-2xl border border-zinc-200 p-4 sm:p-5 mb-6">
+            <div className="flex items-center gap-2">
+              <span className="text-xs sm:text-sm text-zinc-500">Автор: </span>
+              <Link to={`/user/${anime.created_by}`} className="font-semibold text-xs sm:text-sm text-zinc-900 hover:underline">
+                {authorName || 'user'}
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {/* Сезоны - только для не-одиночных */}
+        {!isSingle && seasons.length > 1 && (
           <div className="mb-4 sm:mb-5 flex flex-wrap items-center gap-2">
             <span className="text-xs sm:text-sm font-semibold text-zinc-700 mr-1">Сезоны:</span>
             {seasons.map(s => (
@@ -220,42 +235,46 @@ export default function AnimePage() {
           </div>
         )}
 
-        {/* Для одиночного аниме — показываем видеоплеер сразу */}
-        {anime.type === 'single' && episodes.length > 0 && (
-          <div className="bg-white rounded-xl sm:rounded-2xl border border-zinc-200 overflow-hidden p-4 sm:p-6">
-            <VideoPlayer episode={episodes[0]} />
+        {/* Серии - только для не-одиночных */}
+        {!isSingle && (
+          <div className="bg-white rounded-xl sm:rounded-2xl border border-zinc-200 overflow-hidden">
+            <div className="px-4 sm:px-5 py-2.5 sm:py-3 border-b border-zinc-100">
+              <h2 className="font-semibold text-zinc-900 text-sm sm:text-base">
+                {currentSeason ? `Сезон ${currentSeason.season_number}` : 'Серии'} — {episodes.length}
+              </h2>
+            </div>
+            {episodes.length === 0 ? (
+              <div className="px-4 py-10 sm:py-12 text-center text-sm text-zinc-500">
+                В этом сезоне пока нет серий
+              </div>
+            ) : (
+              <div className="divide-y divide-zinc-100">
+                {episodes.map(ep => (
+                  <button key={ep.id} onClick={() => navigate(`/watch/${ep.id}`)}
+                    className="w-full flex items-center gap-3 sm:gap-4 px-4 sm:px-5 py-2.5 sm:py-3 hover:bg-zinc-50 transition text-left">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-gradient-to-br from-zinc-700 to-zinc-900 flex items-center justify-center text-white font-bold text-xs sm:text-sm shrink-0">
+                      {ep.episode_number}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-xs sm:text-sm text-zinc-900">Серия {ep.episode_number} · {ep.title}</div>
+                      <div className="text-xs text-zinc-500 line-clamp-1 mt-0.5 hidden xs:block">{ep.description}</div>
+                    </div>
+                    <PlayIcon className="w-4 h-4 text-zinc-400 shrink-0" />
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
-        {/* Серии */}
-        <div className="bg-white rounded-xl sm:rounded-2xl border border-zinc-200 overflow-hidden">
-          <div className="px-4 sm:px-5 py-2.5 sm:py-3 border-b border-zinc-100">
-            <h2 className="font-semibold text-zinc-900 text-sm sm:text-base">
-              {currentSeason ? `Сезон ${currentSeason.season_number}` : 'Серии'} — {episodes.length}
-            </h2>
+        {/* Автор для сезонного - внизу */}
+        {!isSingle && anime.created_by && (
+          <div className="mt-6 text-xs sm:text-sm text-zinc-500">
+            <Link to={`/user/${anime.created_by}`} className="hover:text-zinc-900">
+              Автор: <span className="font-semibold hover:underline">{authorName || 'user'}</span>
+            </Link>
           </div>
-          {episodes.length === 0 ? (
-            <div className="px-4 py-10 sm:py-12 text-center text-sm text-zinc-500">
-              В этом сезоне пока нет серий
-            </div>
-          ) : (
-            <div className="divide-y divide-zinc-100">
-              {episodes.map(ep => (
-                <button key={ep.id} onClick={() => navigate(`/watch/${ep.id}`)}
-                  className="w-full flex items-center gap-3 sm:gap-4 px-4 sm:px-5 py-2.5 sm:py-3 hover:bg-zinc-50 transition text-left">
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-gradient-to-br from-zinc-700 to-zinc-900 flex items-center justify-center text-white font-bold text-xs sm:text-sm shrink-0">
-                    {ep.episode_number}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-xs sm:text-sm text-zinc-900">Серия {ep.episode_number} · {ep.title}</div>
-                    <div className="text-xs text-zinc-500 line-clamp-1 mt-0.5 hidden xs:block">{ep.description}</div>
-                  </div>
-                  <PlayIcon className="w-4 h-4 text-zinc-400 shrink-0" />
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        )}
 
         {/* Рейтинг */}
         <div className="mt-5 sm:mt-6 bg-white rounded-xl sm:rounded-2xl border border-zinc-200 p-4 sm:p-5">

@@ -22,13 +22,10 @@ const SIZE_CLASSES = {
 };
 
 /**
- * Палитра фонов для буквы. Выбирается случайно из набора
- * (чёрный, розовый, синий) — но ОДИН цвет на пользователя,
- * сохраняется в User.avatar_color из БД.
- * Здесь fallback если avatar_color пустой.
+ * Палитра фонов для буквы. Всегда розовый по умолчанию.
  */
 const FALLBACK_PALETTE = [
-  '#ec4899', // розовый
+  '#ec4899', // розовый (основной)
   '#3b82f6', // синий
   '#8b5cf6', // фиолетовый
   '#10b981', // изумрудный
@@ -45,11 +42,11 @@ function pickBg(color?: string): string {
 export function UserAvatar({ user, size = 'sm', showLink = false, variant = 'filled', className = '' }: UserAvatarProps) {
   const bg = pickBg(user.avatar_color);
   const filledStyles = {
-    color: '#fff',
+    color: '#000000',  // черная буква
     backgroundColor: bg,
   };
   const minimalStyles = {
-    color: '#ffffff',
+    color: '#000000',  // черная буква
     backgroundColor: bg,
   };
 

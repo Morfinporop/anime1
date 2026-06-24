@@ -3,7 +3,7 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth';
 import { useNotify } from '../notify';
 import { api } from '../api';
-import { compressVideo, blobToDataUrl, formatSize, type CompressionResult } from '../utils/videoCompress';
+import { blobToDataUrl, formatSize } from '../utils/videoCompress';
 import type { Anime } from '../types';
 import { CloseIcon, ChevronDownIcon, UploadIcon } from '../components/icons';
 
@@ -13,11 +13,10 @@ type Mode = 'new' | 'existing';
 const GENRES = ['Экшен', 'Драма', 'Комедия', 'Фэнтези', 'Романтика', 'Приключения', 'Повседневность', 'Фантастика', 'Ужасы', 'Детектив'];
 
 export default function UploadPage() {
-  const { user, loading } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const notify = useNotify();
   const navigate = useNavigate();
 
-  const [step, setStep] = useState<'anime' | 'episode'>('anime');
   const [uploadType, setUploadType] = useState<UploadType>('season');
 
   // АНИМЕ
@@ -39,15 +38,8 @@ export default function UploadPage() {
   const [currentSeasonId, setCurrentSeasonId] = useState<number | null>(null);
 
   // СЕРИЯ — файлы
-  const [episodeTitle, setEpisodeTitle] = useState('');
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [audioTracks, setAudioTracks] = useState<{ label: string; file?: File }[]>([]);
-
-  // СЖАТИЕ
-  const [compressing, setCompressing] = useState(false);
-  const [compressionProgress, setCompressionProgress] = useState(0);
-  const [compressionResult, setCompressionResult] = useState<CompressionResult | null>(null);
-  const [selectedQualities, setSelectedQualities] = useState<string[]>(['720p']);
 
   const [busy, setBusy] = useState(false);
 
@@ -71,7 +63,7 @@ export default function UploadPage() {
     });
   }, [selectedAnimeId, mode]);
 
-  if (loading) return null;
+  if (authLoading) return null;
   if (!user) return <Navigate to="/auth" replace />;
   if (!user.is_admin && !user.isAdmin && !user.can_upload && !user.canUpload) {
     return (
@@ -95,12 +87,9 @@ export default function UploadPage() {
     if (!file.type.startsWith('video/')) { notify.error('Файл должен быть видео'); return; }
     if (file.size > 1024 * 1024 * 1024) { notify.error('Файл слишком большой (макс. 1 ГБ)'); return; }
     setVideoFile(file);
-    setCompressionResult(null);
-    setCompressionProgress(0);
   };
 
   const resetForm = () => {
-    setStep('anime');
     setUploadType('season');
     setMode('new');
     setTitle('');
@@ -113,11 +102,8 @@ export default function UploadPage() {
     setSeasonNumber(1);
     setEpisodeNumber(1);
     setCurrentSeasonId(null);
-    setEpisodeTitle('');
     setVideoFile(null);
     setAudioTracks([]);
-    setCompressionResult(null);
-    setCompressionProgress(0);
   };
 
   const handleAudio = (file: File | undefined) => {
@@ -127,31 +113,8 @@ export default function UploadPage() {
     setAudioTracks(prev => [...prev, { label, file }]);
   };
 
-  const startCompression = async () => {
-    if (!videoFile) { notify.error('Сначала выберите видеофайл'); return; }
-    setCompressing(true);
-    setCompressionProgress(0);
-    try {
-      const result = await compressVideo(videoFile, {
-        maxSizeMB: 500,
-        onProgress: setCompressionProgress,
-        qualities: selectedQualities,
-      });
-      setCompressionResult(result);
-      notify.success(`Сжато в ${Object.keys(result.qualities).length} качеств`);
-    } catch (err: any) {
-      notify.error(err.message ?? 'Неизвестная ошибка');
-    } finally {
-      setCompressing(false);
-    }
-  };
-
   const toggleGenre = (g: string) => {
     setGenres(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g]);
-  };
-
-  const toggleQuality = (q: string) => {
-    setSelectedQualities(prev => prev.includes(q) ? prev.filter(x => x !== q) : [...prev, q]);
   };
 
   const fileToDataUrl = (file: File): Promise<string> => new Promise((resolve, reject) => {
@@ -161,55 +124,94 @@ export default function UploadPage() {
     r.readAsDataURL(file);
   });
 
-  const handleCreateAnimeAndContinue = async () => {
+  const handleCreateAndUpload = async () => {
+    // Валидация
     if (!bannerFile) { notify.error('Загрузите превью-баннер'); return; }
     if (!title.trim()) { notify.error('Введите название'); return; }
     if (!description.trim()) { notify.error('Введите описание'); return; }
 
-    if (mode === 'new' || uploadType === 'single') {
-      setCreatingAnime(true);
-      try {
-        const poster_data = await fileToDataUrl(bannerFile);
-        const r = await api.uploadAnime({
-          title: title.trim(),
-          description: description.trim(),
-          poster_data,
-          poster_mime: bannerFile.type,
-          banner_data: poster_data,
-          banner_mime: bannerFile.type,
-          genres, year, age_rating: ageRating, type: uploadType,
+    // Для одиночного - нужно видео сразу
+    if (uploadType === 'single' && !videoFile) { notify.error('Выберите видеофайл'); return; }
+
+    setBusy(true);
+    try {
+      const poster_data = await fileToDataUrl(bannerFile);
+      
+      // Создаём аниме
+      const r = await api.uploadAnime({
+        title: title.trim(),
+        description: description.trim(),
+        poster_data,
+        poster_mime: bannerFile.type,
+        banner_data: poster_data,
+        banner_mime: bannerFile.type,
+        genres, year, age_rating: ageRating, type: uploadType,
+        voiceovers: audioTracks.map(a => a.label),
+      });
+
+      // Если есть видео - загружаем сразу (для одиночного или если сезонное с видео)
+      if (videoFile) {
+        const ss = await api.getSeasons(r.anime_id);
+        let seasonId = currentSeasonId;
+        
+        if (!seasonId && ss.length > 0) {
+          seasonId = ss[ss.length - 1].id;
+        } else if (!seasonId) {
+          // Создаём сезон
+          const sr = await api.uploadSeason({ anime_id: r.anime_id, season_number: 1 });
+          seasonId = sr.season_id;
+        }
+
+        const video_data = await fileToDataUrl(videoFile);
+
+        // Конвертируем озвучки в data URL
+        const audioTracksData: { label: string; url: string; lang: string }[] = [];
+        for (const a of audioTracks) {
+          if (a.file) {
+            const url = await fileToDataUrl(a.file);
+            audioTracksData.push({ label: a.label, url, lang: 'ru' });
+          }
+        }
+
+        // Качество sources - для совместимости
+        const quality_sources: Record<string, string> = {
+          '720p': video_data
+        };
+
+        await api.uploadEpisode({
+          season_id: seasonId,
+          episode_number: uploadType === 'single' ? 1 : episodeNumber,
+          title: '',
+          video_data,
+          video_mime: videoFile.type,
+          size_bytes: videoFile.size,
           voiceovers: audioTracks.map(a => a.label),
+          audio_tracks: audioTracksData,
+          quality_sources,
         });
+
+        notify.success('Аниме и серия опубликованы');
+        setTimeout(() => navigate(`/anime/${r.anime_id}`), 800);
+      } else {
+        // Только создали аниме, без серии (сезонное)
         setSelectedAnimeId(r.anime_id);
-        setAnimeList(await api.listAnime('newest'));
         const ss = await api.getSeasons(r.anime_id);
         if (ss[0]) setCurrentSeasonId(ss[0].id);
-        setStep('episode');
-        notify.success('Аниме создано');
-      } catch (err: any) {
-        notify.error(err.message ?? 'Ошибка');
-      } finally {
-        setCreatingAnime(false);
+        setAnimeList(await api.listAnime('newest'));
+        notify.success('Аниме создано. Теперь можете добавить серию.');
       }
-    } else {
-      if (selectedAnimeId === '') { notify.error('Выберите тайтл'); return; }
-      setStep('episode');
+    } catch (err: any) {
+      notify.error(err.message ?? 'Ошибка');
+    } finally {
+      setBusy(false);
     }
   };
 
   const submitEpisode = async () => {
-    if (!episodeTitle.trim()) { notify.error('Введите название серии'); return; }
     if (!videoFile) { notify.error('Выберите видеофайл'); return; }
-    if (!compressionResult || Object.keys(compressionResult.qualities).length === 0) {
-      notify.error('Сначала сожмите видео в выбранных качествах'); return;
-    }
     setBusy(true);
     try {
-      // Конвертируем качества в data URL (для бэкенда)
-      const quality_sources: Record<string, string> = {};
-      for (const [q, blob] of Object.entries(compressionResult.qualities)) {
-        quality_sources[q] = await blobToDataUrl(blob);
-      }
+      const video_data = await fileToDataUrl(videoFile);
 
       // Конвертируем озвучки в data URL
       const audioTracksData: { label: string; url: string; lang: string }[] = [];
@@ -220,11 +222,6 @@ export default function UploadPage() {
         }
       }
 
-      // Берём первое качество как основное видео
-      const mainQ = Object.keys(quality_sources)[0];
-      const videoBlob = compressionResult.qualities[mainQ];
-      const video_data = await blobToDataUrl(videoBlob);
-
       // Находим или создаём сезон
       let seasonId = currentSeasonId;
       if (!seasonId) {
@@ -232,19 +229,22 @@ export default function UploadPage() {
         if (ss.length > 0) {
           seasonId = ss[ss.length - 1].id;
         } else {
-          // Создаём сезон
           const sr = await api.uploadSeason({ anime_id: Number(selectedAnimeId), season_number: 1 });
           seasonId = sr.season_id;
         }
       }
 
+      const quality_sources: Record<string, string> = {
+        '720p': video_data
+      };
+
       const r = await api.uploadEpisode({
         season_id: seasonId,
-        episode_number: uploadType === 'single' ? 1 : episodeNumber,
-        title: episodeTitle.trim(),
+        episode_number: episodeNumber,
+        title: '',
         video_data,
-        video_mime: 'video/mp4',
-        size_bytes: videoBlob.size,
+        video_mime: videoFile.type,
+        size_bytes: videoFile.size,
         voiceovers: audioTracks.map(a => a.label),
         audio_tracks: audioTracksData,
         quality_sources,
@@ -259,9 +259,10 @@ export default function UploadPage() {
     }
   };
 
-  const totalCompressedSize = compressionResult
-    ? Object.values(compressionResult.qualities).reduce((s, b) => s + b.size, 0)
-    : 0;
+  // Проверяем, можем ли мы загрузить (для кнопки)
+  const canUpload = bannerFile && title.trim() && description.trim() && !busy;
+  const canUploadSingle = canUpload && videoFile && !busy;
+  const canSubmitEpisode = selectedAnimeId !== '' && videoFile && !busy;
 
   return (
     <div className="mx-auto max-w-3xl px-3 sm:px-4 md:px-6 py-4 sm:py-6 md:py-8 animate-fade-in">
@@ -272,167 +273,118 @@ export default function UploadPage() {
         </div>
       </div>
 
-      {/* Прогресс шагов */}
-      {uploadType === 'season' && (
-        <div className="mb-5 flex items-center justify-center gap-2 text-xs">
-          <div className={`flex items-center gap-2 ${step === 'anime' ? 'text-zinc-900 font-semibold' : 'text-emerald-600'}`}>
-            <span className={`flex h-7 w-7 items-center justify-center rounded-full ${step === 'anime' ? 'bg-zinc-900 text-white' : 'bg-emerald-500 text-white'} font-bold`}>1</span>
-            Аниме
-          </div>
-          <ChevronDownIcon className="h-3 w-3 text-zinc-300 -rotate-90" />
-          <div className={`flex items-center gap-2 ${step === 'episode' ? 'text-zinc-900 font-semibold' : 'text-zinc-400'}`}>
-            <span className={`flex h-7 w-7 items-center justify-center rounded-full ${step === 'episode' ? 'bg-zinc-900 text-white' : 'bg-zinc-200 text-zinc-500'} font-bold`}>2</span>
-            Серия
+      <div className="rounded-xl sm:rounded-2xl border border-zinc-200 bg-white p-4 sm:p-6 space-y-4 sm:space-y-5">
+        {/* Тип */}
+        <div>
+          <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Тип</label>
+          <div className="flex bg-zinc-100 rounded-full p-1">
+            <button type="button" onClick={() => setUploadType('season')}
+              className={`flex-1 py-2 rounded-full text-sm font-semibold transition ${uploadType === 'season' ? 'bg-white shadow-sm text-zinc-900' : 'text-zinc-500'}`}>
+              Сезонное
+            </button>
+            <button type="button" onClick={() => { setUploadType('single'); setMode('new'); }}
+              className={`flex-1 py-2 rounded-full text-sm font-semibold transition ${uploadType === 'single' ? 'bg-white shadow-sm text-zinc-900' : 'text-zinc-500'}`}>
+              Одиночное
+            </button>
           </div>
         </div>
-      )}
 
-      {step === 'anime' && (
-        <div className="rounded-xl sm:rounded-2xl border border-zinc-200 bg-white p-4 sm:p-6 space-y-4 sm:space-y-5">
-          <h2 className="text-lg font-bold text-zinc-900">Шаг 1. Аниме</h2>
-
-          {/* Тип */}
+        {uploadType === 'season' && (
           <div>
-            <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Тип</label>
+            <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Что делаем</label>
             <div className="flex bg-zinc-100 rounded-full p-1">
-              <button type="button" onClick={() => setUploadType('season')}
-                className={`flex-1 py-2 rounded-full text-sm font-semibold transition ${uploadType === 'season' ? 'bg-white shadow-sm text-zinc-900' : 'text-zinc-500'}`}>
-                Сезонное
+              <button type="button" onClick={() => setMode('new')}
+                className={`flex-1 py-2 rounded-full text-sm font-semibold transition ${mode === 'new' ? 'bg-white shadow-sm text-zinc-900' : 'text-zinc-500'}`}>
+                Новый тайтл
               </button>
-              <button type="button" onClick={() => { setUploadType('single'); setMode('new'); }}
-                className={`flex-1 py-2 rounded-full text-sm font-semibold transition ${uploadType === 'single' ? 'bg-white shadow-sm text-zinc-900' : 'text-zinc-500'}`}>
-                Одиночное
+              <button type="button" onClick={() => setMode('existing')}
+                className={`flex-1 py-2 rounded-full text-sm font-semibold transition ${mode === 'existing' ? 'bg-white shadow-sm text-zinc-900' : 'text-zinc-500'}`}>
+                В существующий
               </button>
             </div>
           </div>
+        )}
 
-          {uploadType === 'season' && (
-            <div>
-              <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Что делаем</label>
-              <div className="flex bg-zinc-100 rounded-full p-1">
-                <button type="button" onClick={() => setMode('new')}
-                  className={`flex-1 py-2 rounded-full text-sm font-semibold transition ${mode === 'new' ? 'bg-white shadow-sm text-zinc-900' : 'text-zinc-500'}`}>
-                  Новый тайтл
-                </button>
-                <button type="button" onClick={() => setMode('existing')}
-                  className={`flex-1 py-2 rounded-full text-sm font-semibold transition ${mode === 'existing' ? 'bg-white shadow-sm text-zinc-900' : 'text-zinc-500'}`}>
-                  В существующий
-                </button>
-              </div>
-            </div>
-          )}
-
-          {mode === 'existing' && uploadType === 'season' && (
-            <div>
-              <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Тайтл</label>
-              <div className="relative">
-                <select value={selectedAnimeId} onChange={(e) => setSelectedAnimeId(e.target.value === '' ? '' : Number(e.target.value))}
-                  className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:border-zinc-400 focus:outline-none text-sm appearance-none pr-10">
-                  <option value="">— выберите —</option>
-                  {animeList.filter(a => a.type === 'season').map(a => (
-                    <option key={a.id} value={a.id}>{a.title}</option>
-                  ))}
-                </select>
-                <ChevronDownIcon className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
-              </div>
-            </div>
-          )}
-
-          {(mode === 'new' || uploadType === 'single') && (
-            <>
-              <div>
-                <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Название</label>
-                <input type="text" value={title} onChange={(e) => setTitle(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:border-zinc-400 focus:outline-none text-sm"
-                  placeholder="Например: Сакура: Путь Весны" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Описание</label>
-                <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3}
-                  className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:border-zinc-400 focus:outline-none text-sm resize-none"
-                  placeholder="О чём аниме..." />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Год</label>
-                  <input type="number" value={year} onChange={(e) => setYear(parseInt(e.target.value) || new Date().getFullYear())}
-                    className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:border-zinc-400 focus:outline-none text-sm" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Возраст</label>
-                  <select value={ageRating} onChange={(e) => setAgeRating(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:border-zinc-400 focus:outline-none text-sm">
-                    <option>0+</option><option>6+</option><option>12+</option><option>16+</option><option>18+</option>
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Жанры</label>
-                <div className="flex flex-wrap gap-1.5">
-                  {GENRES.map(g => (
-                    <button key={g} type="button" onClick={() => toggleGenre(g)}
-                      className={`px-3 py-1 rounded-full text-xs font-medium border transition ${
-                        genres.includes(g) ? 'bg-black text-white border-black' : 'bg-white text-zinc-700 border-zinc-200'
-                      }`}>{g}</button>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
-
-          {/* Превью */}
+        {mode === 'existing' && uploadType === 'season' && (
           <div>
-            <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Превью-баннер</label>
-            {bannerPreview ? (
-              <div className="relative">
-                <img src={bannerPreview} alt="" className="rounded-xl max-h-48 w-full object-cover" />
-                <button onClick={() => { setBannerFile(null); setBannerPreview(''); }}
-                  className="absolute top-2 right-2 p-1.5 rounded-full bg-black/70 text-white hover:bg-black">
-                  <CloseIcon className="w-4 h-4" />
-                </button>
-              </div>
-            ) : (
-              <label className="w-full h-32 rounded-2xl border-2 border-dashed border-zinc-200 bg-zinc-50 hover:bg-white hover:border-zinc-400 transition flex flex-col items-center justify-center gap-1 text-zinc-500 cursor-pointer">
-                <UploadIcon className="w-6 h-6" />
-                <span className="text-xs font-medium">Выберите превью</span>
-                <input type="file" accept="image/*" onChange={(e) => handleBanner(e.target.files?.[0])} className="hidden" />
-              </label>
-            )}
+            <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Тайтл</label>
+            <div className="relative">
+              <select value={selectedAnimeId} onChange={(e) => setSelectedAnimeId(e.target.value === '' ? '' : Number(e.target.value))}
+                className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:border-zinc-400 focus:outline-none text-sm appearance-none pr-10">
+                <option value="">— выберите —</option>
+                {animeList.filter(a => a.type === 'season').map(a => (
+                  <option key={a.id} value={a.id}>{a.title}</option>
+                ))}
+              </select>
+              <ChevronDownIcon className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
+            </div>
           </div>
+        )}
 
-          <button type="button" onClick={handleCreateAnimeAndContinue} disabled={creatingAnime}
-            className="w-full py-3 rounded-xl bg-black text-white font-semibold hover:bg-zinc-800 disabled:opacity-50 transition">
-            {creatingAnime ? 'Создание...' : (uploadType === 'single' ? 'Создать аниме' : 'Далее')}
-          </button>
-        </div>
-      )}
-
-      {step === 'episode' && (
-        <div className="rounded-xl sm:rounded-2xl border border-zinc-200 bg-white p-4 sm:p-6 space-y-4 sm:space-y-5">
-          <h2 className="text-lg font-bold text-zinc-900">{uploadType === 'single' ? 'Загрузка видео' : 'Шаг 2'}</h2>
-
-          {uploadType === 'season' && (
+        {(mode === 'new' || uploadType === 'single') && (
+          <>
+            <div>
+              <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Название</label>
+              <input type="text" value={title} onChange={(e) => setTitle(e.target.value)}
+                className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:border-zinc-400 focus:outline-none text-sm"
+                placeholder="Например: Сакура: Путь Весны" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Описание</label>
+              <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3}
+                className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:border-zinc-400 focus:outline-none text-sm resize-none"
+                placeholder="О чём аниме..." />
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Сезон</label>
-                <input type="number" min={1} value={seasonNumber} onChange={(e) => setSeasonNumber(parseInt(e.target.value) || 1)}
+                <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Год</label>
+                <input type="number" value={year} onChange={(e) => setYear(parseInt(e.target.value) || new Date().getFullYear())}
                   className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:border-zinc-400 focus:outline-none text-sm" />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Серия</label>
-                <input type="number" min={1} value={episodeNumber} onChange={(e) => setEpisodeNumber(parseInt(e.target.value) || 1)}
-                  className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:border-zinc-400 focus:outline-none text-sm" />
+                <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Возраст</label>
+                <select value={ageRating} onChange={(e) => setAgeRating(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:border-zinc-400 focus:outline-none text-sm">
+                  <option>0+</option><option>6+</option><option>12+</option><option>16+</option><option>18+</option>
+                </select>
               </div>
             </div>
+            <div>
+              <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Жанры</label>
+              <div className="flex flex-wrap gap-1.5">
+                {GENRES.map(g => (
+                  <button key={g} type="button" onClick={() => toggleGenre(g)}
+                    className={`px-3 py-1 rounded-full text-xs font-medium border transition ${
+                      genres.includes(g) ? 'bg-black text-white border-black' : 'bg-white text-zinc-700 border-zinc-200'
+                    }`}>{g}</button>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Превью */}
+        <div>
+          <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Превью-баннер</label>
+          {bannerPreview ? (
+            <div className="relative">
+              <img src={bannerPreview} alt="" className="rounded-xl max-h-48 w-full object-cover" />
+              <button onClick={() => { setBannerFile(null); setBannerPreview(''); }}
+                className="absolute top-2 right-2 p-1.5 rounded-full bg-black/70 text-white hover:bg-black">
+                <CloseIcon className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
+            <label className="w-full h-32 rounded-2xl border-2 border-dashed border-zinc-200 bg-zinc-50 hover:bg-white hover:border-zinc-400 transition flex flex-col items-center justify-center gap-1 text-zinc-500 cursor-pointer">
+              <UploadIcon className="w-6 h-6" />
+              <span className="text-xs font-medium">Выберите превью</span>
+              <input type="file" accept="image/*" onChange={(e) => handleBanner(e.target.files?.[0])} className="hidden" />
+            </label>
           )}
+        </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Название серии</label>
-            <input type="text" value={episodeTitle} onChange={(e) => setEpisodeTitle(e.target.value)}
-              className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:border-zinc-400 focus:outline-none text-sm"
-              placeholder={uploadType === 'single' ? "Например: Полный метр" : "Например: Пробуждение"} />
-          </div>
-
+        {/* Видео - показываем для одиночного или для сезонного в существующий */}
+        {(uploadType === 'single' || (mode === 'existing' && uploadType === 'season')) && (
           <div>
             <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Видеофайл (макс. 1 ГБ)</label>
             {videoFile ? (
@@ -442,7 +394,7 @@ export default function UploadPage() {
                   <div className="font-semibold text-sm text-zinc-900 truncate">{videoFile.name}</div>
                   <div className="text-xs text-zinc-500">{formatSize(videoFile.size)}</div>
                 </div>
-                <button onClick={() => { setVideoFile(null); setCompressionResult(null); }}
+                <button onClick={() => setVideoFile(null)}
                   className="p-1.5 rounded-full hover:bg-zinc-200">
                   <CloseIcon className="w-4 h-4" />
                 </button>
@@ -455,87 +407,125 @@ export default function UploadPage() {
               </label>
             )}
           </div>
+        )}
 
-          {videoFile && (
-            <div>
-              <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Какие качества сгенерировать?</label>
-              <div className="flex flex-wrap gap-1.5">
-                {['144p', '240p', '360p', '480p', '720p', '1080p'].map(q => (
-                  <button key={q} type="button" onClick={() => toggleQuality(q)}
-                    className={`px-3 py-1 rounded-full text-xs font-medium border transition ${
-                      selectedQualities.includes(q) ? 'bg-black text-white border-black' : 'bg-white text-zinc-700 border-zinc-200'
-                    }`}>{q}</button>
-                ))}
-              </div>
-              <button type="button" onClick={startCompression} disabled={compressing || selectedQualities.length === 0}
-                className="mt-3 w-full py-3 rounded-xl bg-zinc-900 text-white font-semibold hover:bg-zinc-800 disabled:opacity-50 transition flex items-center justify-center gap-2">
-                {compressing ? (
-                  <><div className="h-4 w-4 animate-spin-slow rounded-full border-2 border-white/30 border-t-white" />Сжатие... {Math.round(compressionProgress * 100)}%</>
-                ) : (
-                  <><UploadIcon className="w-4 h-4" />Сжать видео (макс. 500 МБ)</>
-                )}
-              </button>
-              {compressing && (
-                <div className="mt-2 h-2 bg-zinc-200 rounded-full overflow-hidden">
-                  <div className="h-full bg-gradient-to-r from-pink-500 to-rose-500 transition-all" style={{ width: `${compressionProgress * 100}%` }} />
-                </div>
-              )}
-            </div>
-          )}
-
-          {compressionResult && (
-            <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-4">
-              <div className="text-sm font-semibold text-emerald-900 mb-2">
-                Готово: {Object.keys(compressionResult.qualities).length} качеств · {formatSize(totalCompressedSize)}
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                {Object.entries(compressionResult.qualities).map(([q, b]) => (
-                  <div key={q} className="flex items-center justify-between bg-white rounded-lg px-3 py-1.5">
-                    <span className="font-semibold text-zinc-900">{q}</span>
-                    <span className="text-zinc-500">{formatSize(b.size)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
+        {/* Для сезонного нового - показываем видео после создания аниме */}
+        {mode === 'new' && uploadType === 'season' && selectedAnimeId !== '' && (
           <div>
-            <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Озвучка (опционально)</label>
-            <label className="w-full h-24 rounded-2xl border-2 border-dashed border-zinc-200 bg-zinc-50 hover:bg-white hover:border-zinc-400 transition flex flex-col items-center justify-center gap-1 text-zinc-500 cursor-pointer">
-              <UploadIcon className="w-5 h-5" />
-              <span className="text-xs font-medium">Добавить озвучку (аудиофайл)</span>
-              <input type="file" accept="audio/*" onChange={(e) => handleAudio(e.target.files?.[0])} className="hidden" />
-            </label>
-            {audioTracks.length > 0 && (
-              <div className="mt-2 space-y-1.5">
-                {audioTracks.map((a, i) => (
-                  <div key={i} className="flex items-center gap-2 rounded-xl bg-zinc-50 px-3 py-2">
-                    <span className="flex-1 text-sm font-medium text-zinc-900">{a.label}</span>
-                    <button onClick={() => setAudioTracks(prev => prev.filter((_, idx) => idx !== i))}
-                      className="p-1 rounded-full hover:bg-zinc-200">
-                      <CloseIcon className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ))}
+            <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Видеофайл (макс. 1 ГБ)</label>
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Сезон</label>
+                <input type="number" min={1} value={seasonNumber} onChange={(e) => setSeasonNumber(parseInt(e.target.value) || 1)}
+                  className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:border-zinc-400 focus:outline-none text-sm" />
               </div>
+              <div>
+                <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Серия</label>
+                <input type="number" min={1} value={episodeNumber} onChange={(e) => setEpisodeNumber(parseInt(e.target.value) || 1)}
+                  className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:border-zinc-400 focus:outline-none text-sm" />
+              </div>
+            </div>
+            {videoFile ? (
+              <div className="flex items-center gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                <UploadIcon className="w-5 h-5 text-zinc-900" />
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-sm text-zinc-900 truncate">{videoFile.name}</div>
+                  <div className="text-xs text-zinc-500">{formatSize(videoFile.size)}</div>
+                </div>
+                <button onClick={() => setVideoFile(null)}
+                  className="p-1.5 rounded-full hover:bg-zinc-200">
+                  <CloseIcon className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <label className="w-full h-32 rounded-2xl border-2 border-dashed border-zinc-200 bg-zinc-50 hover:bg-white hover:border-zinc-400 transition flex flex-col items-center justify-center gap-1 text-zinc-500 cursor-pointer">
+                <UploadIcon className="w-6 h-6" />
+                <span className="text-xs font-medium">Выберите видео</span>
+                <input type="file" accept="video/*" onChange={(e) => handleVideo(e.target.files?.[0])} className="hidden" />
+              </label>
             )}
           </div>
+        )}
 
-          <div className="flex gap-2">
-            <button onClick={resetForm} className="px-5 py-2.5 rounded-xl border border-zinc-200 bg-white text-sm font-medium text-zinc-700 hover:bg-zinc-50">
-              Назад
-            </button>
-            <button onClick={submitEpisode} disabled={busy || !compressionResult}
+        {/* Озвучка */}
+        <div>
+          <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Озвучка (опционально)</label>
+          <label className="w-full h-24 rounded-2xl border-2 border-dashed border-zinc-200 bg-zinc-50 hover:bg-white hover:border-zinc-400 transition flex flex-col items-center justify-center gap-1 text-zinc-500 cursor-pointer">
+            <UploadIcon className="w-5 h-5" />
+            <span className="text-xs font-medium">Добавить озвучку (аудиофайл)</span>
+            <input type="file" accept="audio/*" onChange={(e) => handleAudio(e.target.files?.[0])} className="hidden" />
+          </label>
+          {audioTracks.length > 0 && (
+            <div className="mt-2 space-y-1.5">
+              {audioTracks.map((a, i) => (
+                <div key={i} className="flex items-center gap-2 rounded-xl bg-zinc-50 px-3 py-2">
+                  <span className="flex-1 text-sm font-medium text-zinc-900">{a.label}</span>
+                  <button onClick={() => setAudioTracks(prev => prev.filter((_, idx) => idx !== i))}
+                    className="p-1 rounded-full hover:bg-zinc-200">
+                    <CloseIcon className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Кнопки */}
+        <div className="flex gap-2">
+          <button onClick={resetForm} className="px-5 py-2.5 rounded-xl border border-zinc-200 bg-white text-sm font-medium text-zinc-700 hover:bg-zinc-50">
+            Очистить
+          </button>
+          
+          {/* Логика кнопки: */}
+          {/* 1. Для одиночного - одна кнопка создать и загрузить */}
+          {uploadType === 'single' && (
+            <button onClick={handleCreateAndUpload} disabled={!canUploadSingle}
               className="flex-1 py-3 rounded-xl bg-black text-white font-semibold hover:bg-zinc-800 disabled:opacity-50 transition flex items-center justify-center gap-2">
               {busy ? (
-                <><div className="h-4 w-4 animate-spin-slow rounded-full border-2 border-white/30 border-t-white" />Публикация...</>
+                <><div className="h-4 w-4 animate-spin-slow rounded-full border-2 border-white/30 border-t-white" />Загрузка...</>
               ) : (
-                <>{uploadType === 'single' ? 'Загрузить серию' : 'Опубликовать'}</>
+                <>Загрузить аниме</>
               )}
             </button>
-          </div>
+          )}
+          
+          {/* 2. Для сезонного нового - если аниме уже создано, показываем кнопку загрузки серии */}
+          {mode === 'new' && uploadType === 'season' && selectedAnimeId !== '' && (
+            <button onClick={submitEpisode} disabled={!canSubmitEpisode}
+              className="flex-1 py-3 rounded-xl bg-black text-white font-semibold hover:bg-zinc-800 disabled:opacity-50 transition flex items-center justify-center gap-2">
+              {busy ? (
+                <><div className="h-4 w-4 animate-spin-slow rounded-full border-2 border-white/30 border-t-white" />Загрузка...</>
+              ) : (
+                <>Опубликовать серию</>
+              )}
+            </button>
+          )}
+
+          {/* 3. Для сезонного нового - если аниме ещё не создано */}
+          {mode === 'new' && uploadType === 'season' && selectedAnimeId === '' && (
+            <button onClick={handleCreateAndUpload} disabled={!canUpload}
+              className="flex-1 py-3 rounded-xl bg-black text-white font-semibold hover:bg-zinc-800 disabled:opacity-50 transition flex items-center justify-center gap-2">
+              {busy ? (
+                <><div className="h-4 w-4 animate-spin-slow rounded-full border-2 border-white/30 border-t-white" />Создание...</>
+              ) : (
+                <>Создать аниме</>
+              )}
+            </button>
+          )}
+
+          {/* 4. Для сезонного в существующий - сразу загружаем серию */}
+          {mode === 'existing' && uploadType === 'season' && (
+            <button onClick={submitEpisode} disabled={!canSubmitEpisode}
+              className="flex-1 py-3 rounded-xl bg-black text-white font-semibold hover:bg-zinc-800 disabled:opacity-50 transition flex items-center justify-center gap-2">
+              {busy ? (
+                <><div className="h-4 w-4 animate-spin-slow rounded-full border-2 border-white/30 border-t-white" />Загрузка...</>
+              ) : (
+                <>Опубликовать серию</>
+              )}
+            </button>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }

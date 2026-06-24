@@ -35,7 +35,7 @@ export default function VideoCard({ anime }: Props) {
 
   return (
     <Link to={`/anime/${anime.id}`} className="group block">
-      <div className="relative aspect-[3/4] overflow-hidden rounded-lg sm:rounded-xl bg-zinc-100">
+      <div className="relative aspect-[2/3] overflow-hidden rounded-lg sm:rounded-xl bg-zinc-100">
         <img
           src={src}
           alt={anime.title}
@@ -75,10 +75,10 @@ export default function VideoCard({ anime }: Props) {
       </div>
 
       <div className="mt-1.5 sm:mt-2 px-1">
-        <h3 className="text-xs xs:text-sm font-semibold text-zinc-900 line-clamp-2 leading-snug group-hover:text-zinc-600 transition">
+        <h3 className="text-sm sm:text-base font-semibold text-zinc-900 line-clamp-2 leading-snug group-hover:text-zinc-600 transition">
           {anime.title}
         </h3>
-        <div className="mt-0.5 sm:mt-1 hidden xs:flex items-center gap-1.5 text-[11px] sm:text-xs text-zinc-500">
+        <div className="mt-1 flex items-center gap-1.5 text-xs sm:text-sm text-zinc-500">
           <span>{anime.year}</span>
           {anime.genres.length > 0 && (
             <>
