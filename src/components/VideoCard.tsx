@@ -3,8 +3,7 @@ import { useEffect, useState } from 'react';
 import type { Anime } from '../types';
 import { api } from '../api';
 import { useAuth } from '../auth';
-import { bannerUrl, FALLBACK_BANNER } from '../hooks';
-import { StarIcon, HeartIcon } from './icons';
+import { HeartIcon } from './icons';
 
 interface Props {
   anime: Anime;
@@ -14,52 +13,56 @@ export default function VideoCard({ anime }: Props) {
   const { user } = useAuth();
   const [fav, setFav] = useState(false);
   const [imgError, setImgError] = useState(false);
+  const [bannerUrl, setBannerUrl] = useState('');
 
   useEffect(() => {
     if (user) {
-      api.isFavorite(anime.id).then(setFav).catch(() => {});
+      api.toggleFavorite(anime.id).then(setFav).catch(() => {});
     }
   }, [user, anime.id]);
+
+  useEffect(() => {
+    // Проверяем наличие баннера
+    if (anime.banner) {
+      setBannerUrl(anime.banner);
+    } else if (anime.poster) {
+      setBannerUrl(anime.poster);
+    } else {
+      setBannerUrl('/images/logov.png');
+    }
+  }, [anime]);
 
   const toggleFav = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     if (!user) return;
     try {
-      if (fav) { await api.removeFavorite(anime.id); setFav(false); }
-      else { await api.addFavorite(anime.id); setFav(true); }
+      const isFav = await api.toggleFavorite(anime.id);
+      setFav(isFav);
     } catch {}
   };
-
-  const src = imgError ? FALLBACK_BANNER : bannerUrl(anime.id);
 
   return (
     <Link to={`/anime/${anime.id}`} className="group block">
       <div className="relative aspect-[2/3] overflow-hidden rounded-lg sm:rounded-xl bg-zinc-100">
         <img
-          src={src}
+          src={bannerUrl}
           alt={anime.title}
           loading="lazy"
           onError={() => setImgError(true)}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
         />
 
-        {/* Бейджи — на мобильных чуть меньше */}
-        {anime.type === 'season' && (
-          <div className="absolute top-1.5 left-1.5 sm:top-2 sm:left-2 px-1.5 sm:px-2 py-0.5 rounded-md bg-black/70 backdrop-blur text-white text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider">
-            Сезонное
-          </div>
-        )}
-        {anime.type === 'single' && (
-          <div className="absolute top-1.5 left-1.5 sm:top-2 sm:left-2 px-1.5 sm:px-2 py-0.5 rounded-md bg-black/70 backdrop-blur text-white text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider">
-            Одиночное
+        {imgError && (
+          <div className="absolute inset-0 flex items-center justify-center bg-zinc-200">
+            <span className="text-zinc-500 text-sm">Нет баннера</span>
           </div>
         )}
 
-        {(anime.rating ?? 0) > 0 && (
+        {/* Рейтинг */}
+        {anime.rating > 0 && (
           <div className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 px-1.5 py-0.5 rounded-md bg-black/70 backdrop-blur text-white text-[10px] sm:text-[11px] font-semibold flex items-center gap-1">
-            <StarIcon filled className="w-3 h-3 text-yellow-400" />
-            {(anime.rating ?? 0).toFixed(1)}
+            ★ {(anime.rating).toFixed(1)}
           </div>
         )}
 

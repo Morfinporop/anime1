@@ -3,12 +3,9 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth';
 import { useNotify } from '../notify';
 import { api } from '../api';
-import { blobToDataUrl, formatSize } from '../utils/videoCompress';
+import { formatSize } from '../utils/videoCompress';
 import type { Anime } from '../types';
 import { CloseIcon, ChevronDownIcon, UploadIcon } from '../components/icons';
-
-type UploadType = 'season' | 'single';
-type Mode = 'new' | 'existing';
 
 const GENRES = ['Экшен', 'Драма', 'Комедия', 'Фэнтези', 'Романтика', 'Приключения', 'Повседневность', 'Фантастика', 'Ужасы', 'Детектив'];
 
@@ -17,12 +14,9 @@ export default function UploadPage() {
   const notify = useNotify();
   const navigate = useNavigate();
 
-  const [uploadType, setUploadType] = useState<UploadType>('season');
-
   // АНИМЕ
   const [animeList, setAnimeList] = useState<Anime[]>([]);
   const [selectedAnimeId, setSelectedAnimeId] = useState<number | ''>('');
-  const [mode, setMode] = useState<Mode>('new');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [year, setYear] = useState(new Date().getFullYear());
@@ -30,43 +24,38 @@ export default function UploadPage() {
   const [genres, setGenres] = useState<string[]>([]);
   const [bannerFile, setBannerFile] = useState<File | null>(null);
   const [bannerPreview, setBannerPreview] = useState('');
-  const [creatingAnime, setCreatingAnime] = useState(false);
-
+  
   // СЕЗОН / СЕРИЯ
   const [seasonNumber, setSeasonNumber] = useState(1);
   const [episodeNumber, setEpisodeNumber] = useState(1);
-  const [currentSeasonId, setCurrentSeasonId] = useState<number | null>(null);
-
-  // СЕРИЯ — файлы
+  const [episodeTitle, setEpisodeTitle] = useState('');
   const [videoFile, setVideoFile] = useState<File | null>(null);
-  const [audioTracks, setAudioTracks] = useState<{ label: string; file?: File }[]>([]);
+  const [posterFile, setPosterFile] = useState<File | null>(null);
+  const [posterPreview, setPosterPreview] = useState('');
 
   const [busy, setBusy] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [step, setStep] = useState<'anime' | 'season' | 'episode'>('anime');
 
   useEffect(() => {
-    api.listAnime('newest').then(setAnimeList).catch(() => {});
+    api.loadCatalog('new').then(setAnimeList).catch(() => {});
   }, []);
 
   useEffect(() => {
-    if (selectedAnimeId === '' || mode !== 'existing') return;
-    api.getSeasons(Number(selectedAnimeId)).then(async ss => {
-      if (ss.length === 0) {
-        setSeasonNumber(1);
+    if (selectedAnimeId === '') return;
+    api.getSeasonEpisodes(Number(selectedAnimeId)).then(episodes => {
+      if (episodes.length > 0) {
+        const last = episodes[episodes.length - 1];
+        setEpisodeNumber(last.episodeNumber + 1);
+      } else {
         setEpisodeNumber(1);
-        return;
       }
-      const last = ss[ss.length - 1];
-      setSeasonNumber(last.season_number);
-      setCurrentSeasonId(last.id);
-      const eps = await api.getSeasonEpisodes(last.id);
-      setEpisodeNumber(eps.length > 0 ? Math.max(...eps.map((e: any) => e.episode_number)) + 1 : 1);
-    });
-  }, [selectedAnimeId, mode]);
+    }).catch(() => {});
+  }, [selectedAnimeId]);
 
   if (authLoading) return null;
   if (!user) return <Navigate to="/auth" replace />;
-  if (!user.is_admin && !user.isAdmin && !user.can_upload && !user.canUpload) {
+  if (!user.isAdmin && !user.canUpload) {
     return (
       <div className="mx-auto max-w-md px-5 py-20 text-center sm:py-28">
         <h1 className="text-display text-2xl text-zinc-900">Нет прав на загрузку</h1>
@@ -77,22 +66,32 @@ export default function UploadPage() {
 
   const handleBanner = async (file: File | undefined) => {
     if (!file) return;
-    if (!file.type.startsWith('image/')) { notify.error('Превью должно быть изображением'); return; }
-    if (file.size > 10 * 1024 * 1024) { notify.error('Превью слишком большое'); return; }
+    if (!file.type.startsWith('image/')) { notify.error('Баннер должен быть изображением'); return; }
+    if (file.size > 10 * 1024 * 1024) { notify.error('Баннер слишком большой (макс. 10 МБ)'); return; }
     setBannerFile(file);
     setBannerPreview(URL.createObjectURL(file));
+  };
+
+  const handlePoster = async (file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { notify.error('Постер должен быть изображением'); return; }
+    if (file.size > 5 * 1024 * 1024) { notify.error('Постер слишком большой (макс. 5 МБ)'); return; }
+    setPosterFile(file);
+    setPosterPreview(URL.createObjectURL(file));
   };
 
   const handleVideo = (file: File | undefined) => {
     if (!file) return;
     if (!file.type.startsWith('video/')) { notify.error('Файл должен быть видео'); return; }
-    if (file.size > 1024 * 1024 * 1024) { notify.error('Файл слишком большой (макс. 1 ГБ)'); return; }
+    if (file.size > 500 * 1024 * 1024) { 
+      notify.error('Видео слишком большое (макс. 500 МБ). Используйте сжатие или выберите другой файл'); 
+      return; 
+    }
     setVideoFile(file);
   };
 
   const resetForm = () => {
-    setUploadType('season');
-    setMode('new');
+    setSelectedAnimeId('');
     setTitle('');
     setDescription('');
     setYear(new Date().getFullYear());
@@ -102,168 +101,137 @@ export default function UploadPage() {
     setBannerPreview('');
     setSeasonNumber(1);
     setEpisodeNumber(1);
-    setCurrentSeasonId(null);
+    setEpisodeTitle('');
     setVideoFile(null);
-    setAudioTracks([]);
-  };
-
-  const handleAudio = (file: File | undefined) => {
-    if (!file) return;
-    if (!file.type.startsWith('audio/')) { notify.error('Озвучка должна быть аудиофайлом'); return; }
-    const label = file.name.replace(/\.[^.]+$/, '');
-    setAudioTracks(prev => [...prev, { label, file }]);
+    setPosterFile(null);
+    setPosterPreview('');
+    setStep('anime');
   };
 
   const toggleGenre = (g: string) => {
     setGenres(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g]);
   };
 
-  const fileToDataUrl = (file: File): Promise<string> => new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(String(r.result));
-    r.onerror = reject;
-    r.readAsDataURL(file);
-  });
-
-  const handleCreateAndUpload = async () => {
-    // Валидация
-    if (!bannerFile) { notify.error('Загрузите превью-баннер'); return; }
-    if (!title.trim()) { notify.error('Введите название'); return; }
-    if (!description.trim()) { notify.error('Введите описание'); return; }
-
-    // Для одиночного - нужно видео сразу
-    if (uploadType === 'single' && !videoFile) { notify.error('Выберите видеофайл'); return; }
+  const createAnime = async () => {
+    if (!title.trim()) { notify.error('Введите название аниме'); return; }
+    if (!bannerFile) { notify.error('Загрузите баннер для аниме'); return; }
 
     setBusy(true);
+    setUploadProgress(10);
+    
     try {
-      const poster_data = await fileToDataUrl(bannerFile);
+      setUploadProgress(30);
       
-      // Создаём аниме
-      const r = await api.uploadAnime({
+      // Создаём аниме с баннером
+      const animeId = await api.createAnime({
         title: title.trim(),
-        description: description.trim(),
-        poster_data,
-        poster_mime: bannerFile.type,
-        banner_data: poster_data,
-        banner_mime: bannerFile.type,
-        genres, year, age_rating: ageRating, type: uploadType,
-        voiceovers: audioTracks.map(a => a.label),
+        description: description.trim() || '',
+        year,
+        ageRating,
+        genres: genres.join(', '),
+        banner: bannerFile,
+        poster: bannerFile // Используем баннер и как постер если нет отдельного постера
       });
 
-      // Если есть видео - загружаем сразу (для одиночного или если сезонное с видео)
-      if (videoFile) {
-        const ss = await api.getSeasons(r.anime_id);
-        let seasonId = currentSeasonId;
-        
-        if (!seasonId && ss.length > 0) {
-          seasonId = ss[ss.length - 1].id;
-        } else if (!seasonId) {
-          // Создаём сезон
-          const sr = await api.uploadSeason({ anime_id: r.anime_id, season_number: 1 });
-          seasonId = sr.season_id;
-        }
-
-        const video_data = await fileToDataUrl(videoFile);
-
-        // Конвертируем озвучки в data URL
-        const audioTracksData: { label: string; url: string; lang: string }[] = [];
-        for (const a of audioTracks) {
-          if (a.file) {
-            const url = await fileToDataUrl(a.file);
-            audioTracksData.push({ label: a.label, url, lang: 'ru' });
-          }
-        }
-
-        // Качество sources - для совместимости
-        const quality_sources: Record<string, string> = {
-          '720p': video_data
-        };
-
-        await api.uploadEpisode({
-          season_id: seasonId,
-          episode_number: uploadType === 'single' ? 1 : episodeNumber,
-          title: '',
-          video_data,
-          video_mime: videoFile.type,
-          size_bytes: videoFile.size,
-          voiceovers: audioTracks.map(a => a.label),
-          audio_tracks: audioTracksData,
-          quality_sources,
-        });
-
-        notify.success('Аниме и серия опубликованы');
-        setTimeout(() => navigate(`/anime/${r.anime_id}`), 800);
-      } else {
-        // Только создали аниме, без серии (сезонное)
-        setSelectedAnimeId(r.anime_id);
-        const ss = await api.getSeasons(r.anime_id);
-        if (ss[0]) setCurrentSeasonId(ss[0].id);
-        setAnimeList(await api.listAnime('newest'));
-        notify.success('Аниме создано. Теперь можете добавить серию.');
-      }
+      setUploadProgress(100);
+      notify.success('Аниме создано успешно!');
+      
+      setSelectedAnimeId(animeId);
+      setStep('season');
+      setUploadProgress(0);
     } catch (err: any) {
-      notify.error(err.message ?? 'Ошибка');
+      notify.error(err.message ?? 'Ошибка создания аниме');
+      setUploadProgress(0);
     } finally {
       setBusy(false);
     }
   };
 
-  const submitEpisode = async () => {
-    if (!videoFile) { notify.error('Выберите видеофайл'); return; }
+  const createSeason = async () => {
+    if (!selectedAnimeId) { notify.error('Сначала создайте аниме'); return; }
+
     setBusy(true);
+    setUploadProgress(10);
+    
     try {
-      const video_data = await fileToDataUrl(videoFile);
-
-      // Конвертируем озвучки в data URL
-      const audioTracksData: { label: string; url: string; lang: string }[] = [];
-      for (const a of audioTracks) {
-        if (a.file) {
-          const url = await fileToDataUrl(a.file);
-          audioTracksData.push({ label: a.label, url, lang: 'ru' });
-        }
-      }
-
-      // Находим или создаём сезон
-      let seasonId = currentSeasonId;
-      if (!seasonId) {
-        const ss = await api.getSeasons(Number(selectedAnimeId));
-        if (ss.length > 0) {
-          seasonId = ss[ss.length - 1].id;
-        } else {
-          const sr = await api.uploadSeason({ anime_id: Number(selectedAnimeId), season_number: 1 });
-          seasonId = sr.season_id;
-        }
-      }
-
-      const quality_sources: Record<string, string> = {
-        '720p': video_data
-      };
-
-      const r = await api.uploadEpisode({
-        season_id: seasonId,
-        episode_number: episodeNumber,
-        title: '',
-        video_data,
-        video_mime: videoFile.type,
-        size_bytes: videoFile.size,
-        voiceovers: audioTracks.map(a => a.label),
-        audio_tracks: audioTracksData,
-        quality_sources,
+      setUploadProgress(50);
+      
+      const seasonId = await api.createSeason({
+        animeId: Number(selectedAnimeId),
+        seasonNumber,
+        description: `Сезон ${seasonNumber}`,
+        poster: posterFile || bannerFile // Используем постер или баннер
       });
 
-      notify.success('Серия опубликована');
-      setTimeout(() => navigate(`/anime/${r.anime_id}`), 800);
+      setUploadProgress(100);
+      notify.success(`Сезон ${seasonNumber} создан!`);
+      
+      setStep('episode');
+      setUploadProgress(0);
     } catch (err: any) {
-      notify.error(err.message ?? 'Ошибка');
+      notify.error(err.message ?? 'Ошибка создания сезона');
+      setUploadProgress(0);
     } finally {
       setBusy(false);
     }
   };
 
-  // Проверяем, можем ли мы загрузить (для кнопки)
-  const canUpload = bannerFile && title.trim() && description.trim() && !busy;
-  const canUploadSingle = canUpload && videoFile && !busy;
-  const canSubmitEpisode = selectedAnimeId !== '' && videoFile && !busy;
+  const uploadEpisode = async () => {
+    if (!selectedAnimeId) { notify.error('Сначала создайте аниме'); return; }
+    if (!videoFile) { notify.error('Выберите видеофайл'); return; }
+    if (videoFile.size > 500 * 1024 * 1024) { 
+      notify.error('Видео слишком большое (макс. 500 МБ). Используйте сжатие или выберите другой файл'); 
+      return; 
+    }
+
+    setBusy(true);
+    setUploadProgress(0);
+    
+    try {
+      // Находим seasonId (создаем сезон если нужно)
+      let seasonId = null;
+      if (step === 'episode') {
+        // Используем последний сезон
+        const seasons = await api.getSeasonEpisodes(Number(selectedAnimeId));
+        if (seasons.length > 0) {
+          seasonId = seasons[0].seasonId; // Используем первый сезон
+        }
+      }
+
+      if (!seasonId) {
+        // Создаем сезон
+        const newSeasonId = await api.createSeason({
+          animeId: Number(selectedAnimeId),
+          seasonNumber,
+          description: `Сезон ${seasonNumber}`,
+          poster: posterFile || bannerFile
+        });
+        seasonId = newSeasonId;
+      }
+
+      // Загружаем эпизод с прогрессом
+      await api.uploadEpisode({
+        seasonId,
+        episodeNumber,
+        title: episodeTitle || `Эпизод ${episodeNumber}`,
+        video: videoFile,
+        poster: posterFile,
+        onProgress: (pct) => {
+          setUploadProgress(pct);
+        }
+      });
+
+      setUploadProgress(100);
+      notify.success(`Эпизод ${episodeNumber} успешно загружен!`);
+      
+      setTimeout(() => navigate(`/anime/${selectedAnimeId}`), 800);
+    } catch (err: any) {
+      notify.error(err.message ?? 'Ошибка загрузки эпизода');
+      setUploadProgress(0);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <div className="mx-auto max-w-3xl px-3 sm:px-4 md:px-6 py-4 sm:py-6 md:py-8 animate-fade-in">
@@ -272,78 +240,35 @@ export default function UploadPage() {
           <UploadIcon className="w-6 h-6 sm:w-7 sm:h-7 text-zinc-900" />
           <h1 className="text-display text-2xl sm:text-3xl text-zinc-900">Загрузить аниме</h1>
         </div>
+        <p className="text-sm text-zinc-600 mt-2">
+          Шаг {step === 'anime' ? '1' : step === 'season' ? '2' : '3'} из 3: {step === 'anime' ? 'Создание аниме' : step === 'season' ? 'Создание сезона' : 'Загрузка эпизода'}
+        </p>
       </div>
 
       <div className="rounded-xl sm:rounded-2xl border border-zinc-200 bg-white p-4 sm:p-6 space-y-4 sm:space-y-5">
-        {/* Тип */}
-        <div>
-          <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Тип</label>
-          <div className="flex bg-zinc-100 rounded-full p-1">
-            <button type="button" onClick={() => setUploadType('season')}
-              className={`flex-1 py-2 rounded-full text-sm font-semibold transition ${uploadType === 'season' ? 'bg-white shadow-sm text-zinc-900' : 'text-zinc-500'}`}>
-              Сезонное
-            </button>
-            <button type="button" onClick={() => { setUploadType('single'); setMode('new'); }}
-              className={`flex-1 py-2 rounded-full text-sm font-semibold transition ${uploadType === 'single' ? 'bg-white shadow-sm text-zinc-900' : 'text-zinc-500'}`}>
-              Одиночное
-            </button>
-          </div>
-        </div>
-
-        {uploadType === 'season' && (
-          <div>
-            <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Что делаем</label>
-            <div className="flex bg-zinc-100 rounded-full p-1">
-              <button type="button" onClick={() => setMode('new')}
-                className={`flex-1 py-2 rounded-full text-sm font-semibold transition ${mode === 'new' ? 'bg-white shadow-sm text-zinc-900' : 'text-zinc-500'}`}>
-                Новый тайтл
-              </button>
-              <button type="button" onClick={() => setMode('existing')}
-                className={`flex-1 py-2 rounded-full text-sm font-semibold transition ${mode === 'existing' ? 'bg-white shadow-sm text-zinc-900' : 'text-zinc-500'}`}>
-                В существующий
-              </button>
-            </div>
-          </div>
-        )}
-
-        {mode === 'existing' && uploadType === 'season' && (
-          <div>
-            <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Тайтл</label>
-            <div className="relative">
-              <select value={selectedAnimeId} onChange={(e) => setSelectedAnimeId(e.target.value === '' ? '' : Number(e.target.value))}
-                className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:border-zinc-400 focus:outline-none text-sm appearance-none pr-10">
-                <option value="">— выберите —</option>
-                {animeList.filter(a => a.type === 'season').map(a => (
-                  <option key={a.id} value={a.id}>{a.title}</option>
-                ))}
-              </select>
-              <ChevronDownIcon className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
-            </div>
-          </div>
-        )}
-
-        {(mode === 'new' || uploadType === 'single') && (
+        {/* Шаг 1: Создание аниме */}
+        {step === 'anime' && (
           <>
             <div>
-              <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Название</label>
+              <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Название аниме *</label>
               <input type="text" value={title} onChange={(e) => setTitle(e.target.value)}
                 className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:border-zinc-400 focus:outline-none text-sm"
-                placeholder="Например: Сакура: Путь Весны" />
+                placeholder="Например: Наруто" />
             </div>
             <div>
               <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Описание</label>
               <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3}
                 className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:border-zinc-400 focus:outline-none text-sm resize-none"
-                placeholder="О чём аниме..." />
+                placeholder="Описание аниме..." />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Год</label>
+                <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Год выпуска</label>
                 <input type="number" value={year} onChange={(e) => setYear(parseInt(e.target.value) || new Date().getFullYear())}
                   className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:border-zinc-400 focus:outline-none text-sm" />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Возраст</label>
+                <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Возрастной рейтинг</label>
                 <select value={ageRating} onChange={(e) => setAgeRating(e.target.value)}
                   className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:border-zinc-400 focus:outline-none text-sm">
                   <option>0+</option><option>6+</option><option>12+</option><option>16+</option><option>18+</option>
@@ -361,150 +286,147 @@ export default function UploadPage() {
                 ))}
               </div>
             </div>
+            <div>
+              <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Баннер аниме * (макс. 10 МБ)</label>
+              {bannerPreview ? (
+                <div className="relative">
+                  <img src={bannerPreview} alt="" className="rounded-xl max-h-48 w-full object-cover" />
+                  <button onClick={() => { setBannerFile(null); setBannerPreview(''); }}
+                    className="absolute top-2 right-2 p-1.5 rounded-full bg-black/70 text-white hover:bg-black">
+                    <CloseIcon className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <label className="w-full h-32 rounded-2xl border-2 border-dashed border-zinc-200 bg-zinc-50 hover:bg-white hover:border-zinc-400 transition flex flex-col items-center justify-center gap-1 text-zinc-500 cursor-pointer">
+                  <UploadIcon className="w-6 h-6" />
+                  <span className="text-xs font-medium">Выберите баннер</span>
+                  <input type="file" accept="image/*" onChange={(e) => handleBanner(e.target.files?.[0])} className="hidden" />
+                </label>
+              )}
+            </div>
           </>
         )}
 
-        {/* Превью */}
-        <div>
-          <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Превью-баннер</label>
-          {bannerPreview ? (
-            <div className="relative">
-              <img src={bannerPreview} alt="" className="rounded-xl max-h-48 w-full object-cover" />
-              <button onClick={() => { setBannerFile(null); setBannerPreview(''); }}
-                className="absolute top-2 right-2 p-1.5 rounded-full bg-black/70 text-white hover:bg-black">
-                <CloseIcon className="w-4 h-4" />
-              </button>
-            </div>
-          ) : (
-            <label className="w-full h-32 rounded-2xl border-2 border-dashed border-zinc-200 bg-zinc-50 hover:bg-white hover:border-zinc-400 transition flex flex-col items-center justify-center gap-1 text-zinc-500 cursor-pointer">
-              <UploadIcon className="w-6 h-6" />
-              <span className="text-xs font-medium">Выберите превью</span>
-              <input type="file" accept="image/*" onChange={(e) => handleBanner(e.target.files?.[0])} className="hidden" />
-            </label>
-          )}
-        </div>
-
-        {/* Видео - показываем для одиночного или для сезонного в существующий */}
-        {(uploadType === 'single' || (mode === 'existing' && uploadType === 'season')) && (
-          <div>
-            <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Видеофайл (макс. 1 ГБ)</label>
-            {videoFile ? (
-              <div className="flex items-center gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-                <UploadIcon className="w-5 h-5 text-zinc-900" />
-                <div className="flex-1 min-w-0">
-                  <div className="font-semibold text-sm text-zinc-900 truncate">{videoFile.name}</div>
-                  <div className="text-xs text-zinc-500">{formatSize(videoFile.size)}</div>
-                </div>
-                <button onClick={() => setVideoFile(null)}
-                  className="p-1.5 rounded-full hover:bg-zinc-200">
-                  <CloseIcon className="w-4 h-4" />
-                </button>
+        {/* Шаг 2: Создание сезона */}
+        {step === 'season' && (
+          <>
+            <div>
+              <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Аниме</label>
+              <div className="px-4 py-2.5 rounded-xl bg-zinc-50 border border-zinc-200 text-sm">
+                <span className="font-semibold">{title}</span>
               </div>
-            ) : (
-              <label className="w-full h-32 rounded-2xl border-2 border-dashed border-zinc-200 bg-zinc-50 hover:bg-white hover:border-zinc-400 transition flex flex-col items-center justify-center gap-1 text-zinc-500 cursor-pointer">
-                <UploadIcon className="w-6 h-6" />
-                <span className="text-xs font-medium">Выберите видео</span>
-                <input type="file" accept="video/*" onChange={(e) => handleVideo(e.target.files?.[0])} className="hidden" />
-              </label>
-            )}
-          </div>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Номер сезона</label>
+              <input type="number" min={1} value={seasonNumber} onChange={(e) => setSeasonNumber(parseInt(e.target.value) || 1)}
+                className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:border-zinc-400 focus:outline-none text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Постер сезона (опционально, макс. 5 МБ)</label>
+              {posterPreview ? (
+                <div className="relative">
+                  <img src={posterPreview} alt="" className="rounded-xl max-h-48 w-full object-cover" />
+                  <button onClick={() => { setPosterFile(null); setPosterPreview(''); }}
+                    className="absolute top-2 right-2 p-1.5 rounded-full bg-black/70 text-white hover:bg-black">
+                    <CloseIcon className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <label className="w-full h-32 rounded-2xl border-2 border-dashed border-zinc-200 bg-zinc-50 hover:bg-white hover:border-zinc-400 transition flex flex-col items-center justify-center gap-1 text-zinc-500 cursor-pointer">
+                  <UploadIcon className="w-6 h-6" />
+                  <span className="text-xs font-medium">Выберите постер сезона</span>
+                  <input type="file" accept="image/*" onChange={(e) => handlePoster(e.target.files?.[0])} className="hidden" />
+                </label>
+              )}
+            </div>
+          </>
         )}
 
-        {/* Для сезонного нового - показываем видео после создания аниме */}
-        {mode === 'new' && uploadType === 'season' && selectedAnimeId !== '' && (
-          <div>
-            <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Видеофайл (макс. 1 ГБ)</label>
-            <div className="grid grid-cols-2 gap-3 mb-3">
-              <div>
-                <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Сезон</label>
-                <input type="number" min={1} value={seasonNumber} onChange={(e) => setSeasonNumber(parseInt(e.target.value) || 1)}
-                  className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:border-zinc-400 focus:outline-none text-sm" />
+        {/* Шаг 3: Загрузка эпизода */}
+        {step === 'episode' && (
+          <>
+            <div>
+              <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Аниме</label>
+              <div className="px-4 py-2.5 rounded-xl bg-zinc-50 border border-zinc-200 text-sm">
+                <span className="font-semibold">{title}</span> • Сезон {seasonNumber}
               </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Серия</label>
+                <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Номер эпизода</label>
                 <input type="number" min={1} value={episodeNumber} onChange={(e) => setEpisodeNumber(parseInt(e.target.value) || 1)}
                   className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:border-zinc-400 focus:outline-none text-sm" />
               </div>
-            </div>
-            {videoFile ? (
-              <div className="flex items-center gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-                <UploadIcon className="w-5 h-5 text-zinc-900" />
-                <div className="flex-1 min-w-0">
-                  <div className="font-semibold text-sm text-zinc-900 truncate">{videoFile.name}</div>
-                  <div className="text-xs text-zinc-500">{formatSize(videoFile.size)}</div>
-                </div>
-                <button onClick={() => setVideoFile(null)}
-                  className="p-1.5 rounded-full hover:bg-zinc-200">
-                  <CloseIcon className="w-4 h-4" />
-                </button>
+              <div>
+                <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Название эпизода</label>
+                <input type="text" value={episodeTitle} onChange={(e) => setEpisodeTitle(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 border border-zinc-200 focus:bg-white focus:border-zinc-400 focus:outline-none text-sm"
+                  placeholder={`Эпизод ${episodeNumber}`} />
               </div>
-            ) : (
-              <label className="w-full h-32 rounded-2xl border-2 border-dashed border-zinc-200 bg-zinc-50 hover:bg-white hover:border-zinc-400 transition flex flex-col items-center justify-center gap-1 text-zinc-500 cursor-pointer">
-                <UploadIcon className="w-6 h-6" />
-                <span className="text-xs font-medium">Выберите видео</span>
-                <input type="file" accept="video/*" onChange={(e) => handleVideo(e.target.files?.[0])} className="hidden" />
-              </label>
-            )}
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Видеофайл * (макс. 500 МБ)</label>
+              {videoFile ? (
+                <div className="flex items-center gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                  <UploadIcon className="w-5 h-5 text-zinc-900" />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-sm text-zinc-900 truncate">{videoFile.name}</div>
+                    <div className="text-xs text-zinc-500">{formatSize(videoFile.size)}</div>
+                  </div>
+                  <button onClick={() => setVideoFile(null)}
+                    className="p-1.5 rounded-full hover:bg-zinc-200">
+                    <CloseIcon className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <label className="w-full h-32 rounded-2xl border-2 border-dashed border-zinc-200 bg-zinc-50 hover:bg-white hover:border-zinc-400 transition flex flex-col items-center justify-center gap-1 text-zinc-500 cursor-pointer">
+                  <UploadIcon className="w-6 h-6" />
+                  <span className="text-xs font-medium">Выберите видео</span>
+                  <input type="file" accept="video/*" onChange={(e) => handleVideo(e.target.files?.[0])} className="hidden" />
+                </label>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* Прогресс загрузки */}
+        {busy && uploadProgress > 0 && (
+          <div className="pt-4">
+            <div className="flex items-center justify-between text-sm mb-1">
+              <span className="font-medium text-zinc-700">Загрузка...</span>
+              <span className="font-semibold text-zinc-900">{uploadProgress}%</span>
+            </div>
+            <div className="h-2 bg-zinc-100 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-black transition-all duration-300"
+                style={{ width: `${uploadProgress}%` }}
+              />
+            </div>
+            <p className="text-xs text-zinc-500 mt-2">
+              {uploadProgress < 30 ? 'Подготовка файлов...' : 
+               uploadProgress < 70 ? 'Отправка на сервер...' : 
+               uploadProgress < 90 ? 'Сжатие видео...' : 
+               'Финальная обработка...'}
+            </p>
           </div>
         )}
 
-        {/* Озвучка */}
-        <div>
-          <label className="block text-xs font-semibold text-zinc-600 mb-1.5 uppercase tracking-wider">Озвучка (опционально)</label>
-          <label className="w-full h-24 rounded-2xl border-2 border-dashed border-zinc-200 bg-zinc-50 hover:bg-white hover:border-zinc-400 transition flex flex-col items-center justify-center gap-1 text-zinc-500 cursor-pointer">
-            <UploadIcon className="w-5 h-5" />
-            <span className="text-xs font-medium">Добавить озвучку (аудиофайл)</span>
-            <input type="file" accept="audio/*" onChange={(e) => handleAudio(e.target.files?.[0])} className="hidden" />
-          </label>
-          {audioTracks.length > 0 && (
-            <div className="mt-2 space-y-1.5">
-              {audioTracks.map((a, i) => (
-                <div key={i} className="flex items-center gap-2 rounded-xl bg-zinc-50 px-3 py-2">
-                  <span className="flex-1 text-sm font-medium text-zinc-900">{a.label}</span>
-                  <button onClick={() => setAudioTracks(prev => prev.filter((_, idx) => idx !== i))}
-                    className="p-1 rounded-full hover:bg-zinc-200">
-                    <CloseIcon className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
         {/* Кнопки */}
-        <div className="flex gap-2">
-          <button onClick={resetForm} className="px-5 py-2.5 rounded-xl border border-zinc-200 bg-white text-sm font-medium text-zinc-700 hover:bg-zinc-50">
-            Очистить
+        <div className="flex gap-2 pt-4">
+          {step !== 'anime' && (
+            <button onClick={() => setStep(step === 'episode' ? 'season' : 'anime')} 
+              className="px-5 py-2.5 rounded-xl border border-zinc-200 bg-white text-sm font-medium text-zinc-700 hover:bg-zinc-50">
+              Назад
+            </button>
+          )}
+          
+          <button onClick={resetForm} 
+            className="px-5 py-2.5 rounded-xl border border-zinc-200 bg-white text-sm font-medium text-zinc-700 hover:bg-zinc-50">
+            Очистить всё
           </button>
           
-          {/* Логика кнопки: */}
-          {/* 1. Для одиночного - одна кнопка создать и загрузить */}
-          {uploadType === 'single' && (
-            <button onClick={handleCreateAndUpload} disabled={!canUploadSingle}
-              className="flex-1 py-3 rounded-xl bg-black text-white font-semibold hover:bg-zinc-800 disabled:opacity-50 transition flex items-center justify-center gap-2">
-              {busy ? (
-                <><div className="h-4 w-4 animate-spin-slow rounded-full border-2 border-white/30 border-t-white" />Загрузка {uploadProgress}%...</>
-              ) : (
-                <>Загрузить аниме</>
-              )}
-            </button>
-          )}
-          
-          {/* 2. Для сезонного нового - если аниме уже создано, показываем кнопку загрузки серии */}
-          {mode === 'new' && uploadType === 'season' && selectedAnimeId !== '' && (
-            <button onClick={submitEpisode} disabled={!canSubmitEpisode}
-              className="flex-1 py-3 rounded-xl bg-black text-white font-semibold hover:bg-zinc-800 disabled:opacity-50 transition flex items-center justify-center gap-2">
-              {busy ? (
-                <><div className="h-4 w-4 animate-spin-slow rounded-full border-2 border-white/30 border-t-white" />Загрузка {uploadProgress}%...</>
-              ) : (
-                <>Опубликовать серию</>
-              )}
-            </button>
-          )}
-
-          {/* 3. Для сезонного нового - если аниме ещё не создано */}
-          {mode === 'new' && uploadType === 'season' && selectedAnimeId === '' && (
-            <button onClick={handleCreateAndUpload} disabled={!canUpload}
+          {step === 'anime' && (
+            <button onClick={createAnime} disabled={busy || !title.trim() || !bannerFile}
               className="flex-1 py-3 rounded-xl bg-black text-white font-semibold hover:bg-zinc-800 disabled:opacity-50 transition flex items-center justify-center gap-2">
               {busy ? (
                 <><div className="h-4 w-4 animate-spin-slow rounded-full border-2 border-white/30 border-t-white" />Создание {uploadProgress}%...</>
@@ -513,15 +435,25 @@ export default function UploadPage() {
               )}
             </button>
           )}
-
-          {/* 4. Для сезонного в существующий - сразу загружаем серию */}
-          {mode === 'existing' && uploadType === 'season' && (
-            <button onClick={submitEpisode} disabled={!canSubmitEpisode}
+          
+          {step === 'season' && (
+            <button onClick={createSeason} disabled={busy}
+              className="flex-1 py-3 rounded-xl bg-black text-white font-semibold hover:bg-zinc-800 disabled:opacity-50 transition flex items-center justify-center gap-2">
+              {busy ? (
+                <><div className="h-4 w-4 animate-spin-slow rounded-full border-2 border-white/30 border-t-white" />Создание сезона...</>
+              ) : (
+                <>Создать сезон</>
+              )}
+            </button>
+          )}
+          
+          {step === 'episode' && (
+            <button onClick={uploadEpisode} disabled={busy || !videoFile}
               className="flex-1 py-3 rounded-xl bg-black text-white font-semibold hover:bg-zinc-800 disabled:opacity-50 transition flex items-center justify-center gap-2">
               {busy ? (
                 <><div className="h-4 w-4 animate-spin-slow rounded-full border-2 border-white/30 border-t-white" />Загрузка {uploadProgress}%...</>
               ) : (
-                <>Опубликовать серию</>
+                <>Загрузить эпизод</>
               )}
             </button>
           )}

@@ -47,7 +47,7 @@ export function Header() {
     setMobileMenuOpen(false);
   };
 
-  const canUpload = user && (user.is_admin || user.isAdmin || user.can_upload || user.canUpload);
+  const canUpload = user && (user.isAdmin || user.canUpload);
 
   return (
     <>
@@ -90,20 +90,20 @@ export function Header() {
 
           {/* Десктоп */}
           <div className="hidden md:flex items-center gap-2 shrink-0">
-            {user && (user.is_admin || user.isAdmin) ? (
-              <Link to="/admin" className="flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-yellow-500 text-black text-sm font-medium hover:bg-yellow-400 transition">
-                <UploadIcon className="w-4 h-4" /> Админ меню
+            {user && user.isAdmin ? (
+              <Link to="/admin" className="px-3.5 py-2 rounded-full bg-yellow-500 text-black text-sm font-medium hover:bg-yellow-400 transition">
+                Админ меню
               </Link>
             ) : canUpload && (
-              <Link to="/upload" className="flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-black text-white text-sm font-medium hover:bg-zinc-800 transition">
-                <UploadIcon className="w-4 h-4" /> Загрузить
+              <Link to="/upload" className="px-3.5 py-2 rounded-full bg-black text-white text-sm font-medium hover:bg-zinc-800 transition">
+                Загрузить
               </Link>
             )}
             {user ? (
               <div ref={profileRef} className="relative">
                 <button onClick={() => setProfileOpen(v => !v)}
                   className="flex items-center gap-2 pl-1 pr-3 py-1 rounded-full hover:bg-zinc-100 transition">
-                  <UserAvatar user={user} size="sm" />
+                  <UserAvatar user={user} size="sm" variant="filled" />
                   <span className="text-sm font-medium">{user.username}</span>
                 </button>
                 {profileOpen && (
@@ -118,13 +118,13 @@ export function Header() {
                     <Link to={`/user/${user.id}`} onClick={() => setProfileOpen(false)} className="flex items-center gap-2.5 px-4 py-3 hover:bg-zinc-50 text-sm">
                       <UserIcon className="w-4 h-4 text-zinc-500" /> Мой профиль
                     </Link>
-                    {user.is_admin ? (
+                    {user.isAdmin ? (
                       <Link to="/admin" onClick={() => setProfileOpen(false)} className="flex items-center gap-2.5 px-4 py-3 hover:bg-zinc-50 text-sm border-t border-zinc-100">
-                        <UploadIcon className="w-4 h-4 text-zinc-500" /> Админ меню
+                        Админ меню
                       </Link>
                     ) : canUpload && (
                       <Link to="/upload" onClick={() => setProfileOpen(false)} className="flex items-center gap-2.5 px-4 py-3 hover:bg-zinc-50 text-sm border-t border-zinc-100">
-                        <UploadIcon className="w-4 h-4 text-zinc-500" /> Загрузить аниме
+                        Загрузить аниме
                       </Link>
                     )}
                     <button onClick={() => { logout(); setProfileOpen(false); navigate('/'); }}
@@ -135,17 +135,21 @@ export function Header() {
                 )}
               </div>
             ) : (
-              <Link to="/auth" className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-black text-white text-sm font-medium hover:bg-zinc-800 transition">
-                <UserIcon className="w-4 h-4" /> Войти
+              <Link to="/auth" className="px-4 py-2 rounded-full bg-black text-white text-sm font-medium hover:bg-zinc-800 transition">
+                Войти
               </Link>
             )}
           </div>
 
           {/* Мобильный */}
           <div className="flex md:hidden items-center gap-1 shrink-0">
-            {canUpload && (
+            {user && user.isAdmin ? (
+              <Link to="/admin" className="p-2 rounded-full hover:bg-zinc-100 transition" aria-label="Админ меню">
+                <span className="text-sm font-medium text-zinc-700">Админ</span>
+              </Link>
+            ) : canUpload && (
               <Link to="/upload" className="p-2 rounded-full hover:bg-zinc-100 transition" aria-label="Загрузить">
-                <UploadIcon className="w-5 h-5 text-zinc-700" />
+                <span className="text-sm font-medium text-zinc-700">Загрузить</span>
               </Link>
             )}
             {user && <UserAvatar user={user} size="sm" variant="filled" showLink />}
@@ -189,7 +193,7 @@ export function Header() {
                 <UserAvatar user={user} size="md" />
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-sm text-zinc-900 truncate">{user.username}</div>
-                  <div className="text-xs text-zinc-500">ID #{user.id} · {user.is_admin ? 'Администратор' : 'Пользователь'}</div>
+                  <div className="text-xs text-zinc-500">ID #{user.id} · {user.isAdmin ? 'Администратор' : 'Пользователь'}</div>
                 </div>
               </Link>
             )}
@@ -203,10 +207,10 @@ export function Header() {
               {canUpload && (
                 <Link to="/upload" onClick={() => setMobileMenuOpen(false)}
                   className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-100 text-sm text-zinc-900">
-                  <UploadIcon className="w-4 h-4 text-zinc-500" /> Загрузить аниме
+                  Загрузить аниме
                 </Link>
               )}
-              {user && (user.is_admin || user.isAdmin) && (
+              {user && user.isAdmin && (
                 <Link to="/admin" onClick={() => setMobileMenuOpen(false)}
                   className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-100 text-sm text-zinc-900">
                   Панель администратора

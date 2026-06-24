@@ -2,9 +2,8 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../auth';
-import type { Anime, Comment, Episode, Season } from '../types';
-import { bannerUrl, FALLBACK_BANNER } from '../hooks';
-import { VideoPlayer } from '../components/VideoPlayer';
+import type { Anime, Comment, Episode } from '../types';
+import { getBannerUrl } from '../hooks';
 import {
   ArrowLeftIcon, HeartIcon, PlayIcon, ShareIcon, StarIcon,
   ThumbsDownIcon, ThumbsUpIcon, SendIcon,
@@ -29,49 +28,65 @@ export default function AnimePage() {
   const { user } = useAuth();
 
   const [anime, setAnime] = useState<Anime | null>(null);
-  const [seasons, setSeasons] = useState<Season[]>([]);
-  const [currentSeason, setCurrentSeason] = useState<Season | null>(null);
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');
-  const [votes, setVotes] = useState<{ likes: number; dislikes: number; user_vote: number }>({ likes: 0, dislikes: 0, user_vote: 0 });
-  const [rating, setRating] = useState<{ avg: number; count: number; user_score: number | null }>({ avg: 0, count: 0, user_score: null });
+  const [votes, setVotes] = useState({ likes: 0, dislikes: 0, userVote: 0 });
+  const [rating, setRating] = useState({ average: 0, count: 0, userScore: null as number | null });
   const [fav, setFav] = useState(false);
   const [copied, setCopied] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [authorName, setAuthorName] = useState<string | null>(null);
+  const [bannerUrl, setBannerUrl] = useState('');
 
   useEffect(() => {
     setLoading(true);
     Promise.all([
-      api.getAnime(animeId),
-      api.getSeasons(animeId),
-      api.getVotes(animeId),
-      api.getRating(animeId),
+      api.getAnimeById(animeId),
       api.getComments(animeId),
-    ]).then(([a, ss, v, r, cmts]) => {
-      setAnime(a);
-      setSeasons(ss);
-      setVotes(v);
-      setRating(r);
-      setComments(cmts);
-      if (a && ss.length > 0) setCurrentSeason(ss[0]);
-      if (a?.created_by) {
-        api.getUser(a.created_by).then(u => {
-          if (u) setAuthorName(u.username);
-        }).catch(() => {});
+    ]).then(async ([a, cmts]) => {
+      if (!a) {
+        setLoading(false);
+        return;
       }
-      if (user) api.isFavorite(animeId).then(setFav).catch(() => {});
+      
+      setAnime(a);
+      setComments(cmts);
+      
+      // Загружаем баннер
+      const banner = await getBannerUrl(a.banner, a.poster);
+      setBannerUrl(banner);
+      
+      // Загружаем эпизоды
+      try {
+        const episodesData = await api.getSeasonEpisodes(a.id);
+        setEpisodes(episodesData);
+      } catch {}
+      
+      // Загружаем голоса
+      try {
+        const votesData = await api.voteAnime(a.id, 0);
+        setVotes(votesData);
+      } catch {}
+      
+      // Загружаем рейтинг
+      try {
+        const ratingData = await api.getAnimeRating(a.id);
+        setRating(ratingData);
+      } catch {}
+      
+      // Проверяем избранное
+      if (user) {
+        try {
+          const favorites = await api.getFavorites();
+          setFav(favorites.some(f => f.id === a.id));
+        } catch {}
+      }
+      
       setLoading(false);
       window.scrollTo({ top: 0 });
     }).catch(() => setLoading(false));
   }, [animeId, user]);
-
-  useEffect(() => {
-    if (!currentSeason) return;
-    api.getSeasonEpisodes(currentSeason.id).then(setEpisodes);
-  }, [currentSeason]);
 
   if (loading) {
     return (
@@ -94,15 +109,15 @@ export default function AnimePage() {
 
   const vote = async (v: 1 | -1) => {
     if (!user) { navigate('/auth'); return; }
-    const newVote = votes.user_vote === v ? 0 : v;
-    await api.vote(anime.id, newVote);
-    setVotes(await api.getVotes(anime.id));
+    const newVote = votes.userVote === v ? 0 : v;
+    const result = await api.voteAnime(anime.id, newVote);
+    setVotes(result);
   };
 
   const toggleFav = async () => {
     if (!user) { navigate('/auth'); return; }
-    if (fav) { await api.removeFavorite(anime.id); setFav(false); }
-    else { await api.addFavorite(anime.id); setFav(true); }
+    const isFav = await api.toggleFavorite(anime.id);
+    setFav(isFav);
   };
 
   const share = async () => {
@@ -115,26 +130,29 @@ export default function AnimePage() {
 
   const submitComment = async () => {
     if (!user || !newComment.trim()) return;
-    await api.createComment(anime.id, newComment.trim());
-    setComments(await api.getComments(anime.id));
+    await api.addComment(anime.id, newComment.trim());
+    const freshComments = await api.getComments(anime.id);
+    setComments(freshComments);
     setNewComment('');
   };
 
   const rateAnime = async (score: number) => {
     if (!user) { navigate('/auth'); return; }
-    await api.rate(anime.id, score);
-    setRating(await api.getRating(anime.id));
+    await api.rateAnime(anime.id, score);
+    const freshRating = await api.getAnimeRating(anime.id);
+    setRating(freshRating);
   };
-
-  const isSingle = anime.type === 'single';
 
   return (
     <div className="animate-fade-in">
-      {/* Hero */}
+      {/* Hero с баннером */}
       <div className="relative">
         <div className="relative h-56 xs:h-64 sm:h-80 md:h-96 lg:h-[28rem] xl:h-[32rem] overflow-hidden">
-          <img src={bannerUrl(anime.id)} alt="" className="absolute inset-0 w-full h-full object-cover"
-            onError={(e) => { (e.target as HTMLImageElement).src = FALLBACK_BANNER; }} />
+          <img 
+            src={bannerUrl} 
+            alt="" 
+            className="absolute inset-0 w-full h-full object-cover"
+          />
           <div className="absolute inset-0 bg-gradient-to-t from-white via-white/60 to-transparent" />
         </div>
         <div className="mx-auto max-w-[1400px] px-4 sm:px-6 lg:px-8 -mt-24 sm:-mt-32 md:-mt-40 relative">
@@ -152,35 +170,33 @@ export default function AnimePage() {
             )}
 
             <div className="mt-4 flex flex-wrap items-center gap-1.5 sm:gap-2 text-xs">
-              {(rating.avg ?? 0) > 0 && (
+              {anime.rating > 0 && (
                 <span className="flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-full bg-yellow-100 text-yellow-800 font-semibold">
                   <StarIcon filled className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                  {rating.avg.toFixed(1)}
+                  {anime.rating.toFixed(1)}
                 </span>
               )}
               <span className="px-2 sm:px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-700 font-medium">{anime.year}</span>
-              <span className="px-2 sm:px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-700 font-medium">{anime.age_rating}</span>
-              {isSingle && <span className="px-2 sm:px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-700 font-medium">Одиночное</span>}
-              {!isSingle && <span className="px-2 sm:px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-700 font-medium">Сезонное</span>}
+              <span className="px-2 sm:px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-700 font-medium">{anime.ageRating}</span>
               {anime.genres.slice(0, window.innerWidth < 640 ? 2 : anime.genres.length).map((g: string) => (
                 <span key={g} className="px-2 sm:px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-700 font-medium">{g}</span>
               ))}
             </div>
 
-            {/* Действия */}
+            {/* Кнопки действий */}
             <div className="mt-4 sm:mt-5 flex flex-wrap items-center gap-2">
               <button onClick={() => vote(1)}
                 className={`flex items-center gap-1 sm:gap-1.5 rounded-full border px-3 sm:px-3.5 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold transition ${
-                  votes.user_vote === 1 ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50'
+                  votes.userVote === 1 ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50'
                 }`}>
-                <ThumbsUpIcon filled={votes.user_vote === 1} className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
+                <ThumbsUpIcon filled={votes.userVote === 1} className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
                 <span className="tabular-nums">{votes.likes}</span>
               </button>
               <button onClick={() => vote(-1)}
                 className={`flex items-center gap-1 sm:gap-1.5 rounded-full border px-3 sm:px-3.5 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold transition ${
-                  votes.user_vote === -1 ? 'border-red-300 bg-red-50 text-red-700' : 'border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50'
+                  votes.userVote === -1 ? 'border-red-300 bg-red-50 text-red-700' : 'border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50'
                 }`}>
-                <ThumbsDownIcon filled={votes.user_vote === -1} className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
+                <ThumbsDownIcon filled={votes.userVote === -1} className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
                 <span className="tabular-nums">{votes.dislikes}</span>
               </button>
               <button onClick={toggleFav}
@@ -201,51 +217,17 @@ export default function AnimePage() {
       </div>
 
       <div className="mx-auto max-w-[1400px] px-4 sm:px-6 lg:px-8 py-6 sm:py-8 md:py-12">
-        {/* Для одиночного аниме — показываем видеоплеер сразу */}
-        {isSingle && episodes.length > 0 && (
-          <div className="bg-white rounded-xl sm:rounded-2xl border border-zinc-200 overflow-hidden p-4 sm:p-6 mb-6">
-            <VideoPlayer episode={episodes[0]} />
-          </div>
-        )}
-
-        {/* Информация об авторе для одиночного - ниже видео */}
-        {isSingle && anime.created_by && (
-          <div className="bg-white rounded-xl sm:rounded-2xl border border-zinc-200 p-4 sm:p-5 mb-6">
-            <div className="flex items-center gap-2">
-              <span className="text-xs sm:text-sm text-zinc-500">Автор: </span>
-              <Link to={`/user/${anime.created_by}`} className="font-semibold text-xs sm:text-sm text-zinc-900 hover:underline">
-                {authorName || 'user'}
-              </Link>
-            </div>
-          </div>
-        )}
-
-        {/* Сезоны - только для не-одиночных */}
-        {!isSingle && seasons.length > 1 && (
-          <div className="mb-4 sm:mb-5 flex flex-wrap items-center gap-2">
-            <span className="text-xs sm:text-sm font-semibold text-zinc-700 mr-1">Сезоны:</span>
-            {seasons.map(s => (
-              <button key={s.id} onClick={() => setCurrentSeason(s)}
-                className={`px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-semibold transition ${
-                  s.id === currentSeason?.id ? 'bg-zinc-900 text-white' : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
-                }`}>
-                Сезон {s.season_number}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Серии - только для не-одиночных */}
-        {!isSingle && (
-          <div className="bg-white rounded-xl sm:rounded-2xl border border-zinc-200 overflow-hidden">
+        {/* Эпизоды */}
+        {episodes.length > 0 && (
+          <div className="bg-white rounded-xl sm:rounded-2xl border border-zinc-200 overflow-hidden mb-6">
             <div className="px-4 sm:px-5 py-2.5 sm:py-3 border-b border-zinc-100">
               <h2 className="font-semibold text-zinc-900 text-sm sm:text-base">
-                {currentSeason ? `Сезон ${currentSeason.season_number}` : 'Серии'} — {episodes.length}
+                Эпизоды — {episodes.length}
               </h2>
             </div>
             {episodes.length === 0 ? (
               <div className="px-4 py-10 sm:py-12 text-center text-sm text-zinc-500">
-                В этом сезоне пока нет серий
+                Пока нет серий
               </div>
             ) : (
               <div className="divide-y divide-zinc-100">
@@ -253,10 +235,10 @@ export default function AnimePage() {
                   <button key={ep.id} onClick={() => navigate(`/watch/${ep.id}`)}
                     className="w-full flex items-center gap-3 sm:gap-4 px-4 sm:px-5 py-2.5 sm:py-3 hover:bg-zinc-50 transition text-left">
                     <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-gradient-to-br from-zinc-700 to-zinc-900 flex items-center justify-center text-white font-bold text-xs sm:text-sm shrink-0">
-                      {ep.episode_number}
+                      {ep.episodeNumber}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-xs sm:text-sm text-zinc-900">Серия {ep.episode_number} · {ep.title}</div>
+                      <div className="font-semibold text-xs sm:text-sm text-zinc-900">Серия {ep.episodeNumber} · {ep.title}</div>
                       <div className="text-xs text-zinc-500 line-clamp-1 mt-0.5 hidden xs:block">{ep.description}</div>
                     </div>
                     <PlayIcon className="w-4 h-4 text-zinc-400 shrink-0" />
@@ -267,29 +249,20 @@ export default function AnimePage() {
           </div>
         )}
 
-        {/* Автор для сезонного - внизу */}
-        {!isSingle && anime.created_by && (
-          <div className="mt-6 text-xs sm:text-sm text-zinc-500">
-            <Link to={`/user/${anime.created_by}`} className="hover:text-zinc-900">
-              Автор: <span className="font-semibold hover:underline">{authorName || 'user'}</span>
-            </Link>
-          </div>
-        )}
-
         {/* Рейтинг */}
         <div className="mt-5 sm:mt-6 bg-white rounded-xl sm:rounded-2xl border border-zinc-200 p-4 sm:p-5">
           <div className="flex flex-col xs:flex-row xs:items-center xs:justify-between gap-1 mb-3">
             <h3 className="font-semibold text-zinc-900 text-sm sm:text-base">Оцените аниме</h3>
             <div className="text-xs text-zinc-500">
-              {rating.count > 0 ? `Средняя: ${rating.avg.toFixed(1)} (${rating.count})` : 'Будьте первым!'}
+              {rating.count > 0 ? `Средняя: ${rating.average.toFixed(1)} (${rating.count})` : 'Будьте первым!'}
             </div>
           </div>
           <div className="flex flex-wrap gap-1">
             {Array.from({ length: 10 }, (_, i) => i + 1).map(n => (
               <button key={n} onClick={() => rateAnime(n)}
                 className={`flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-lg text-xs sm:text-sm font-bold transition ${
-                  rating.user_score === n ? 'bg-yellow-400 text-yellow-900 ring-2 ring-yellow-500'
-                  : (rating.user_score !== null && n <= (rating.user_score ?? 0)) ? 'bg-yellow-100 text-yellow-800'
+                  rating.userScore === n ? 'bg-yellow-400 text-yellow-900 ring-2 ring-yellow-500'
+                  : (rating.userScore !== null && n <= (rating.userScore ?? 0)) ? 'bg-yellow-100 text-yellow-800'
                   : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
                 }`}>
                 {n}
@@ -303,10 +276,10 @@ export default function AnimePage() {
           <h3 className="font-semibold text-zinc-900 mb-4 text-sm sm:text-base">Комментарии · {comments.length}</h3>
           {user ? (
             <form onSubmit={(e) => { e.preventDefault(); submitComment(); }} className="flex gap-3 mb-4 items-start">
-              <Link to={`/user/${user.id}`} className="w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0"
-                style={{ backgroundColor: user.avatar_color }}>
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0"
+                style={{ backgroundColor: user.avatarColor }}>
                 {user.username[0]?.toUpperCase()}
-              </Link>
+              </div>
               <div className="flex-1 relative">
                 <textarea value={newComment} onChange={(e) => setNewComment(e.target.value)}
                   placeholder="Оставьте комментарий..." rows={2}
@@ -326,22 +299,19 @@ export default function AnimePage() {
             {comments.length === 0 ? (
               <p className="text-center py-6 text-sm text-zinc-400">Пока никто не комментировал</p>
             ) : comments.map(c => (
-              <div key={c.id} className="flex gap-2 sm:gap-3">
-                <Link to={`/user/${c.user_id}`} className="shrink-0">
-                  <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-white font-bold text-xs"
-                    style={{ backgroundColor: c.avatar_color }}>
-                    {c.username[0]?.toUpperCase()}
-                  </div>
-                </Link>
+              <div key={c.id} className="flex gap-3 sm:gap-4">
+                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-white font-bold text-xs sm:text-sm shrink-0"
+                  style={{ backgroundColor: c.avatarColor }}>
+                  {c.username[0]?.toUpperCase()}
+                </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-baseline gap-1.5 sm:gap-2 flex-wrap">
-                    <Link to={`/user/${c.user_id}`} className="font-semibold text-xs sm:text-sm text-zinc-900 hover:underline">
+                  <div className="flex items-baseline gap-2 sm:gap-3 flex-wrap">
+                    <span className="font-semibold text-sm sm:text-base text-zinc-900">
                       {c.username}
-                    </Link>
-                    {(c.is_admin || c.isAdmin) && <span className="text-[9px] sm:text-[10px] px-1 sm:px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-800 font-semibold uppercase">Admin</span>}
-                    <span className="text-xs text-zinc-400">{timeAgo(c.created_at)}</span>
+                    </span>
+                    <span className="text-xs text-zinc-400">{timeAgo(c.createdAt)}</span>
                   </div>
-                  <p className="mt-0.5 text-xs sm:text-sm text-zinc-700 break-words whitespace-pre-wrap">{c.text}</p>
+                  <p className="mt-1 text-sm text-zinc-700 break-words whitespace-pre-wrap">{c.text}</p>
                 </div>
               </div>
             ))}

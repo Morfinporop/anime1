@@ -22,20 +22,23 @@ const SIZE_CLASSES = {
 };
 
 /**
- * Палитра фонов для буквы. Всегда розовый по умолчанию.
+ * Палитра фонов для буквы. Используется если не задан avatar_color
  */
 const FALLBACK_PALETTE = [
-  '#ec4899', // розовый (основной)
+  '#ef4444', // красный
+  '#f97316', // оранжевый
+  '#eab308', // желтый
+  '#22c55e', // зеленый
   '#3b82f6', // синий
   '#8b5cf6', // фиолетовый
-  '#10b981', // изумрудный
-  '#f59e0b', // янтарный
+  '#ec4899', // розовый
+  '#06b6d4', // голубой
 ];
 
 function pickBg(color?: string): string {
   if (color) return color;
-  // стабильный по id: используем хеш ника
-  const idx = Math.abs((color || '').split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % FALLBACK_PALETTE.length;
+  // стабильный по username: используем хеш ника
+  const idx = Math.abs(user.username.split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % FALLBACK_PALETTE.length;
   return FALLBACK_PALETTE[idx];
 }
 

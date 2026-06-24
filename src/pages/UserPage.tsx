@@ -7,6 +7,18 @@ import VideoCard from '../components/VideoCard';
 import { UserAvatar } from '../components/UserAvatar';
 import { ShieldIcon } from '../components/icons';
 
+// Функция для определения цвета фона по avatar_color пользователя
+function getProfileBackgroundColor(color?: string): string {
+  if (color) return color;
+  // Если цвет не задан, используем палитру как в UserAvatar
+  const fallbackPalette = [
+    '#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', 
+    '#8b5cf6', '#ec4899', '#06b6d4'
+  ];
+  // Используем хеш ID пользователя для детерминированного выбора
+  return fallbackPalette[Math.abs(parseInt(id ?? '0')) % fallbackPalette.length];
+}
+
 export default function UserPage() {
   const { id } = useParams();
   const userId = parseInt(id ?? '0');
@@ -45,28 +57,32 @@ export default function UserPage() {
   }
 
   const isMe = currentUser?.id === user.id;
+  const profileBgColor = user.avatar_color || getProfileBackgroundColor();
 
   return (
     <div className="mx-auto max-w-[1400px] px-3 sm:px-4 md:px-6 py-4 sm:py-6 md:py-8 animate-fade-in">
-      <div className="bg-white rounded-2xl sm:rounded-3xl border border-zinc-200 p-4 sm:p-6 md:p-8">
+      <div 
+        className="bg-white rounded-2xl sm:rounded-3xl border border-zinc-200 p-4 sm:p-6 md:p-8"
+        style={{ backgroundColor: profileBgColor, borderColor: profileBgColor }}
+      >
         <div className="flex items-start gap-3 sm:gap-5">
-          <UserAvatar user={user} size="xl" variant="minimal" />
+          <UserAvatar user={user} size="xl" variant="filled" />
           <div className="flex-1 min-w-0">
-            <h1 className="text-display text-2xl sm:text-3xl md:text-4xl text-zinc-900 flex items-center gap-2 flex-wrap">
+            <h1 className="text-display text-2xl sm:text-3xl md:text-4xl text-white flex items-center gap-2 flex-wrap">
               {user.username}
               {(user.is_admin || user.isAdmin) && (
-                <span className="inline-flex items-center gap-1 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full bg-yellow-100 text-yellow-800 text-[10px] sm:text-xs font-bold">
-                  <ShieldIcon className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> Администратор
+                <span className="inline-flex px-2 sm:px-3 py-0.5 sm:py-1 rounded-full bg-white text-black text-[10px] sm:text-xs font-bold">
+                  Администратор
                 </span>
               )}
             </h1>
-            <div className="mt-1 sm:mt-2 text-zinc-500 text-xs sm:text-sm">
+            <div className="mt-1 sm:mt-2 text-white/80 text-xs sm:text-sm">
               ID #{user.id} · с нами с {new Date(user.created_at).toLocaleDateString('ru-RU')}
             </div>
           </div>
           {!isMe && currentUser && (
             <button onClick={() => navigate('/auth')}
-              className="text-xs text-zinc-500 hover:text-zinc-900 hidden sm:block">
+              className="text-xs text-white/60 hover:text-white hidden sm:block">
               Не вы
             </button>
           )}
