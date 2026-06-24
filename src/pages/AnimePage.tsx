@@ -8,6 +8,7 @@ import {
   ArrowLeftIcon, HeartIcon, PlayIcon, ShareIcon, StarIcon,
   ThumbsDownIcon, ThumbsUpIcon, SendIcon,
 } from '../components/icons';
+import { Recommendations } from '../components/Recommendations';
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -316,6 +317,11 @@ export default function AnimePage() {
               </div>
             ))}
           </div>
+        </div>
+
+        {/* Рекомендации */}
+        <div className="mt-5 sm:mt-6 bg-white rounded-xl sm:rounded-2xl border border-zinc-200 p-4 sm:p-5">
+          <Recommendations currentAnimeId={anime.id} maxItems={6} />
         </div>
       </div>
     </div>

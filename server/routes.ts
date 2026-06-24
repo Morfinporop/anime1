@@ -62,6 +62,21 @@ const upload = multer({
   }
 });
 
+// Проверка доступности FFmpeg
+async function checkFFmpegAvailable(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const ffmpegCheck = spawn('ffmpeg', ['-version']);
+    
+    ffmpegCheck.on('close', (code) => {
+      resolve(code === 0);
+    });
+    
+    ffmpegCheck.on('error', () => {
+      resolve(false);
+    });
+  });
+}
+
 // Функция сжатия видео через FFmpeg
 async function compressVideo(inputPath: string, outputPath: string, maxSizeMB: number = 500): Promise<void> {
   return new Promise((resolve, reject) => {

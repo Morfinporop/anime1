@@ -34,14 +34,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback(async (username: string, password: string) => {
-    const { user, token } = await api.login(username, password);
-    localStorage.setItem(TOKEN_KEY, token);
+    const user = await api.login(username, password);
+    // Токен сохраняется в куках на сервере
+    // Устанавливаем флаг в localStorage для отслеживания авторизации
+    localStorage.setItem(TOKEN_KEY, 'authenticated');
     setUser(user);
   }, []);
 
   const register = useCallback(async (username: string, password: string) => {
-    const { user, token } = await api.register(username, password);
-    localStorage.setItem(TOKEN_KEY, token);
+    const user = await api.register(username, password);
+    // Токен сохраняется в куках на сервере
+    localStorage.setItem(TOKEN_KEY, 'authenticated');
     setUser(user);
   }, []);
 

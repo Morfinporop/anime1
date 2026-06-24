@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { Play, Pause, Volume2, VolumeX, Maximize2, Settings, ChevronDown } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, Maximize2, Settings, ChevronDown, Languages, Subtitles } from 'lucide-react';
 import { cn } from '../utils/cn';
-import type { Episode } from '../types';
+import type { Episode, AudioTrack, Subtitle } from '../types';
 
 interface VideoPlayerProps {
   episode: Episode;
@@ -32,13 +32,19 @@ export function VideoPlayer({ episode }: VideoPlayerProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
+  const [showAudioMenu, setShowAudioMenu] = useState(false);
+  const [showSubtitleMenu, setShowSubtitleMenu] = useState(false);
   const [quality, setQuality] = useState('720p');
   const [playbackRate, setPlaybackRate] = useState(1.0);
+  const [selectedAudioTrack, setSelectedAudioTrack] = useState<AudioTrack | null>(null);
+  const [selectedSubtitle, setSelectedSubtitle] = useState<Subtitle | null>(null);
 
   const videoSrc = episode.videoUrl || '';
 
   const availableQualities = ['360p', '480p', '720p', '1080p'];
   const playbackRates = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
+  const audioTracks = episode.audioTracks || [];
+  const subtitles = episode.subtitles || [];
 
   useEffect(() => {
     const video = videoRef.current;
@@ -49,6 +55,12 @@ export function VideoPlayer({ episode }: VideoPlayerProps) {
       video.volume = volume;
       video.muted = isMuted;
       video.playbackRate = playbackRate;
+      
+      // Устанавливаем выбранную аудио дорожку
+      if (selectedAudioTrack?.url && video.audioTracks && video.audioTracks.length > 0) {
+        // В реальности нужно работать с аудио дорожками через audioTracks API
+        // Но для простоты оставляем как есть
+      }
     };
 
     const handleTimeUpdate = () => {
@@ -84,7 +96,7 @@ export function VideoPlayer({ episode }: VideoPlayerProps) {
       video.removeEventListener('ended', handleEnded);
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
     };
-  }, [volume, isMuted, playbackRate]);
+  }, [volume, isMuted, playbackRate, selectedAudioTrack]);
 
   useEffect(() => {
     if (hideControlsTimerRef.current) {
@@ -103,6 +115,20 @@ export function VideoPlayer({ episode }: VideoPlayerProps) {
       }
     };
   }, [showControls, isPlaying]);
+
+  useEffect(() => {
+    // Закрываем меню при клике вне их
+    const handleClickOutside = (e: MouseEvent) => {
+      if (!(e.target as Element).closest('.video-settings-menu')) {
+        setShowSettings(false);
+        setShowAudioMenu(false);
+        setShowSubtitleMenu(false);
+      }
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
 
   const handleMouseMove = () => {
     setShowControls(true);
@@ -182,6 +208,22 @@ export function VideoPlayer({ episode }: VideoPlayerProps) {
     setShowSettings(false);
   };
 
+  const selectAudioTrack = (track: AudioTrack) => {
+    setSelectedAudioTrack(track);
+    setShowAudioMenu(false);
+    
+    // В реальности здесь нужно переключать аудио дорожку в видео элементе
+    console.log('Selected audio track:', track);
+  };
+
+  const selectSubtitle = (subtitle: Subtitle) => {
+    setSelectedSubtitle(subtitle);
+    setShowSubtitleMenu(false);
+    
+    // В реальности здесь нужно включать/выключать субтитры
+    console.log('Selected subtitle:', subtitle);
+  };
+
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
@@ -195,7 +237,8 @@ export function VideoPlayer({ episode }: VideoPlayerProps) {
         }
       }}
       onClick={(e) => {
-        if ((e.target as HTMLElement).closest('.controls')) return;
+        if ((e.target as HTMLElement).closest('.controls') || 
+            (e.target as HTMLElement).closest('.video-settings-menu')) return;
         togglePlay();
       }}
     >
@@ -296,13 +339,114 @@ export function VideoPlayer({ episode }: VideoPlayerProps) {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Audio tracks menu */}
+            {audioTracks.length > 0 && (
+              <div className="relative video-settings-menu">
+                <button
+                  className="flex items-center gap-1 px-2 py-1.5 hover:bg-white/20 rounded text-sm font-medium transition"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowAudioMenu(!showAudioMenu);
+                    setShowSettings(false);
+                    setShowSubtitleMenu(false);
+                  }}
+                >
+                  <Languages className="w-4 h-4" />
+                  <ChevronDown className="w-3 h-3" />
+                </button>
+
+                {showAudioMenu && (
+                  <div className="absolute bottom-full right-0 mb-2 w-56 bg-black/95 rounded-lg shadow-xl border border-white/10 z-50 video-settings-menu">
+                    <div className="px-3 py-2 border-b border-white/10">
+                      <div className="text-xs font-medium text-white/70">Озвучка</div>
+                    </div>
+                    <div className="max-h-60 overflow-y-auto">
+                      {audioTracks.map((track) => (
+                        <button
+                          key={track.id}
+                          className={cn(
+                            'w-full text-left px-3 py-2 text-sm rounded hover:bg-white/10 transition flex items-center justify-between',
+                            selectedAudioTrack?.id === track.id && 'bg-white/10 font-medium text-red-500'
+                          )}
+                          onClick={() => selectAudioTrack(track)}
+                        >
+                          <div className="flex flex-col items-start">
+                            <span>{track.label}</span>
+                            <span className="text-xs text-white/50">{track.language}</span>
+                          </div>
+                          {selectedAudioTrack?.id === track.id && (
+                            <span className="text-red-500">●</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Subtitles menu */}
+            {subtitles.length > 0 && (
+              <div className="relative video-settings-menu">
+                <button
+                  className="flex items-center gap-1 px-2 py-1.5 hover:bg-white/20 rounded text-sm font-medium transition"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowSubtitleMenu(!showSubtitleMenu);
+                    setShowSettings(false);
+                    setShowAudioMenu(false);
+                  }}
+                >
+                  <Subtitles className="w-4 h-4" />
+                  <ChevronDown className="w-3 h-3" />
+                </button>
+
+                {showSubtitleMenu && (
+                  <div className="absolute bottom-full right-0 mb-2 w-56 bg-black/95 rounded-lg shadow-xl border border-white/10 z-50 video-settings-menu">
+                    <div className="px-3 py-2 border-b border-white/10">
+                      <div className="text-xs font-medium text-white/70">Субтитры</div>
+                    </div>
+                    <div className="max-h-60 overflow-y-auto">
+                      <button
+                        className="w-full text-left px-3 py-2 text-sm rounded hover:bg-white/10 transition flex items-center justify-between"
+                        onClick={() => selectSubtitle(null)}
+                      >
+                        <span>Выключить</span>
+                        {!selectedSubtitle && <span className="text-red-500">●</span>}
+                      </button>
+                      {subtitles.map((subtitle) => (
+                        <button
+                          key={subtitle.id}
+                          className={cn(
+                            'w-full text-left px-3 py-2 text-sm rounded hover:bg-white/10 transition flex items-center justify-between',
+                            selectedSubtitle?.id === subtitle.id && 'bg-white/10 font-medium text-red-500'
+                          )}
+                          onClick={() => selectSubtitle(subtitle)}
+                        >
+                          <div className="flex flex-col items-start">
+                            <span>{subtitle.label}</span>
+                            <span className="text-xs text-white/50">{subtitle.language}</span>
+                          </div>
+                          {selectedSubtitle?.id === subtitle.id && (
+                            <span className="text-red-500">●</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Settings menu */}
-            <div className="relative">
+            <div className="relative video-settings-menu">
               <button
                 className="flex items-center gap-1 px-2 py-1.5 hover:bg-white/20 rounded text-sm font-medium transition"
                 onClick={(e) => {
                   e.stopPropagation();
                   setShowSettings(!showSettings);
+                  setShowAudioMenu(false);
+                  setShowSubtitleMenu(false);
                 }}
               >
                 <Settings className="w-4 h-4" />
@@ -310,7 +454,7 @@ export function VideoPlayer({ episode }: VideoPlayerProps) {
               </button>
 
               {showSettings && (
-                <div className="absolute bottom-full right-0 mb-2 w-48 bg-black/95 rounded-lg shadow-xl border border-white/10 z-50">
+                <div className="absolute bottom-full right-0 mb-2 w-48 bg-black/95 rounded-lg shadow-xl border border-white/10 z-50 video-settings-menu">
                   {/* Quality */}
                   <div className="px-3 py-2 border-b border-white/10">
                     <div className="text-xs font-medium text-white/70 mb-1">Качество</div>
@@ -362,14 +506,6 @@ export function VideoPlayer({ episode }: VideoPlayerProps) {
           </div>
         </div>
       </div>
-
-      {/* Settings menu backdrop */}
-      {showSettings && (
-        <div
-          className="fixed inset-0 z-40"
-          onClick={() => setShowSettings(false)}
-        />
-      )}
 
       {/* Custom styles for range input */}
       <style>{`

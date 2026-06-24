@@ -33,7 +33,25 @@ export interface Episode {
   videoUrl: string;
   poster: string;
   viewsCount: number;
+  audioTracks: AudioTrack[];
+  subtitles: Subtitle[];
   createdAt: string;
+}
+
+export interface AudioTrack {
+  id: string;
+  label: string;
+  language: string;
+  url?: string;
+  isDefault: boolean;
+}
+
+export interface Subtitle {
+  id: string;
+  label: string;
+  language: string;
+  url: string;
+  isDefault: boolean;
 }
 
 export interface Comment {

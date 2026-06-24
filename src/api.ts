@@ -603,3 +603,52 @@ export async function changePassword(oldPassword: string, newPassword: string) {
 }
 
 export type Video = Anime;
+
+// Экспорт api для совместимости со старым кодом
+export const api = {
+  // Auth
+  me: users.getCurrent,
+  login: users.login,
+  register: users.register,
+  
+  // Anime
+  loadCatalog,
+  getAnimeById,
+  searchAnime,
+  createAnime,
+  
+  // Seasons & Episodes
+  createSeason,
+  uploadEpisode,
+  getSeasonEpisodes,
+  
+  // Comments
+  getComments,
+  addComment,
+  toggleCommentLike,
+  deleteComment,
+  
+  // Votes & Ratings
+  voteAnime,
+  rateAnime,
+  getAnimeRating,
+  
+  // Favorites
+  getFavorites,
+  toggleFavorite,
+  
+  // History
+  getHistory,
+  pushHistory,
+  
+  // Admin
+  admin,
+  
+  // Misc
+  recordView,
+  changePassword,
+  
+  // Preloading
+  preloadAll,
+  refreshAll,
+};
