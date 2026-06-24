@@ -4,7 +4,7 @@ import { useAuth } from '../auth';
 import { api } from '../api';
 import type { Anime } from '../types';
 import { SearchIcon, UserIcon, UploadIcon, LogoutIcon, MenuIcon, CloseIcon } from './icons';
-import { bannerUrl, FALLBACK_BANNER } from '../hooks';
+import { getBannerUrl, FALLBACK_BANNER } from '../hooks';
 import { UserAvatar } from './UserAvatar';
 
 export function Header() {
@@ -76,7 +76,7 @@ export function Header() {
                 {results.map(a => (
                   <button key={a.id} onClick={() => { navigate(`/anime/${a.id}`); setQ(''); setShowResults(false); }}
                     className="w-full flex items-center gap-3 p-2.5 hover:bg-zinc-50 text-left">
-                    <img src={bannerUrl(a.id)} alt="" className="w-12 h-8 object-cover rounded shrink-0"
+                    <img src={a.banner || a.poster || FALLBACK_BANNER} alt="" className="w-12 h-8 object-cover rounded shrink-0"
                       onError={(e) => { (e.target as HTMLImageElement).src = FALLBACK_BANNER; }} />
                     <div className="flex-1 min-w-0">
                       <div className="font-medium text-sm text-zinc-900 truncate">{a.title}</div>
