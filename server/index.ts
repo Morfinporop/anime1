@@ -32,6 +32,12 @@ app.use(authMiddleware);
 // API роуты
 app.use('/api', router);
 
+// Раздача загруженных файлов напрямую (не через /api)
+const uploadsPath = path.join(__dirname, '..', 'uploads');
+if (fs.existsSync(uploadsPath)) {
+  app.use('/uploads', express.static(uploadsPath));
+}
+
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, env: NODE_ENV, db: !!pool, ts: Date.now() });
 });
