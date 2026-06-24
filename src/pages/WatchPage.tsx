@@ -4,7 +4,7 @@ import { api } from '../api';
 import { useAuth } from '../auth';
 import type { Episode } from '../types';
 import { VideoPlayer } from '../components/VideoPlayer';
-import { ArrowLeftIcon, HeartIcon, MessageCircleIcon, ShareIcon } from '../components/icons';
+import { ArrowLeftIcon, HeartIcon, ShareIcon, MessageCircleIcon } from '../components/icons';
 
 export default function WatchPage() {
   const { id } = useParams();
